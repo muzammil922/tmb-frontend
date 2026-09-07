@@ -15,6 +15,12 @@ interface SyncSettings {
   resultsPerPage: number;
 }
 
+interface SyncStatus {
+  running: boolean;
+  cancelRequested: boolean;
+  activeJobId: string | null;
+}
+
 interface SyncJob {
   id: string;
   source: string;
@@ -155,8 +161,40 @@ export function SyncPage() {
         text: started ? 'Sync started successfully.' : res.data?.message || 'Sync could not start.',
       });
       queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-status'] });
     },
     onError: () => setMessage({ type: 'error', text: 'Failed to start sync.' }),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: () => api.post('/admin/sync/stop'),
+    onSuccess: (res) => {
+      setMessage({ type: 'success', text: res.data?.message || 'Stop requested.' });
+      queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+    },
+    onError: () => setMessage({ type: 'error', text: 'Failed to stop sync.' }),
+  });
+
+  const stopAutomationMutation = useMutation({
+    mutationFn: () => api.post('/admin/sync/stop-automation'),
+    onSuccess: (res) => {
+      setForm((current) => (current ? { ...current, automationEnabled: false } : current));
+      setMessage({ type: 'success', text: res.data?.message || 'Automation stopped.' });
+      queryClient.invalidateQueries({ queryKey: ['sync-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+    },
+    onError: () => setMessage({ type: 'error', text: 'Failed to stop automation.' }),
+  });
+
+  const { data: syncStatus } = useQuery({
+    queryKey: ['sync-status'],
+    queryFn: async () => {
+      const { data } = await api.get<SyncStatus>('/admin/sync/status');
+      return data;
+    },
+    refetchInterval: 3000,
   });
 
   const { data: jobsData, isLoading: jobsLoading } = useQuery({
@@ -176,6 +214,8 @@ export function SyncPage() {
     if (status === 'RUNNING') return 'text-yellow-400';
     return 'text-slate-400';
   };
+
+  const isSyncRunning = syncStatus?.running ?? false;
 
   return (
     <div>
@@ -280,21 +320,43 @@ export function SyncPage() {
           <p className="mb-4 text-sm text-slate-400">
             Run a sync immediately. Only enabled sources will be processed.
           </p>
+          {isSyncRunning && (
+            <div className="mb-4 rounded-lg border border-yellow-700 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-200">
+              Sync is running{syncStatus?.cancelRequested ? ' — stopping...' : '...'}
+            </div>
+          )}
           <select
             value={runSource}
             onChange={(e) => setRunSource(e.target.value as SyncSource)}
             className="mb-4 w-full rounded-lg bg-slate-700 px-4 py-3"
+            disabled={isSyncRunning}
           >
             <option value="ALL">All enabled sources</option>
             <option value="URDBOX">Urdubox only</option>
             <option value="MOVIESAPI">MoviesAPI only</option>
           </select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              onClick={() => runMutation.mutate(runSource)}
+              disabled={runMutation.isPending || isSyncRunning}
+              className="rounded-lg bg-green-600 py-3 font-semibold hover:bg-green-700 disabled:opacity-50"
+            >
+              {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
+            </button>
+            <button
+              onClick={() => stopMutation.mutate()}
+              disabled={!isSyncRunning || stopMutation.isPending}
+              className="rounded-lg bg-red-700 py-3 font-semibold hover:bg-red-800 disabled:opacity-50"
+            >
+              {stopMutation.isPending ? 'Stopping...' : 'Stop Sync'}
+            </button>
+          </div>
           <button
-            onClick={() => runMutation.mutate(runSource)}
-            disabled={runMutation.isPending}
-            className="w-full rounded-lg bg-green-600 py-3 font-semibold hover:bg-green-700 disabled:opacity-50"
+            onClick={() => stopAutomationMutation.mutate()}
+            disabled={stopAutomationMutation.isPending || (!form.automationEnabled && !isSyncRunning)}
+            className="mt-3 w-full rounded-lg border border-red-700 py-3 font-semibold text-red-300 hover:bg-red-900/20 disabled:opacity-50"
           >
-            {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
+            {stopAutomationMutation.isPending ? 'Stopping...' : 'Stop Automation & Sync'}
           </button>
         </div>
       </div>
@@ -325,6 +387,9 @@ export function SyncPage() {
                     {job.startedAt ? new Date(job.startedAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
                   </span>
                 </button>
+                {job.errorMessage && (
+                  <p className="px-4 pb-3 text-xs text-orange-300">{job.errorMessage}</p>
+                )}
                 {expandedJobId === job.id && <JobLogs jobId={job.id} />}
               </div>
             ))}
