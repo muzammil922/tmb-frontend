@@ -5,6 +5,10 @@ import {
   discoverUrduboxSeries,
   mapUrduboxItems,
 } from '../lib/urdubox-browser';
+import { Card, CardHeader } from './ui/Card';
+import { Button } from './ui/Button';
+import { Alert } from './ui/Alert';
+import { IconStop } from './ui/icons';
 
 interface BrowserUrduboxSyncProps {
   maxPages: number;
@@ -119,45 +123,53 @@ export function BrowserUrduboxSync({ maxPages, resultsPerPage, onComplete }: Bro
   };
 
   return (
-    <div className="rounded-xl border border-purple-700 bg-purple-950/20 p-6">
-      <h2 className="mb-2 text-lg font-semibold text-purple-200">Browser Urdubox Sync</h2>
-      <p className="mb-4 text-sm text-slate-400">
-        Fetches Urdubox from your browser (bypasses server 403). Imports via backend using TMDB data.
-        Uses admin proxy on Vercel if CORS blocks direct fetch.
-      </p>
+    <Card className="border-violet-500/20 bg-violet-500/5">
+      <CardHeader
+        title="Browser Urdubox Sync"
+        description="Fetches Urdubox from your browser (bypasses server IP block). Backend only imports via TMDB."
+      />
 
       {status && (
-        <div className="mb-4 rounded-lg bg-slate-900/80 px-4 py-3 text-sm text-slate-200">{status}</div>
+        <Alert variant={status.includes('failed') || status.includes('No items') ? 'error' : running ? 'info' : 'success'}>
+          {status}
+        </Alert>
       )}
 
       {running && (
-        <div className="mb-4 flex flex-wrap gap-4 text-sm">
-          <span className="text-green-400">+{stats.imported} imported</span>
-          <span className="text-yellow-400">skip {stats.skipped}</span>
-          <span className="text-red-400">fail {stats.failed}</span>
-          <span className="text-slate-400">page {stats.page}/{maxPages}</span>
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+            <p className="text-xs text-slate-500">Imported</p>
+            <p className="mt-1 text-xl font-bold text-emerald-400">+{stats.imported}</p>
+          </div>
+          <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+            <p className="text-xs text-slate-500">Skipped</p>
+            <p className="mt-1 text-xl font-bold text-amber-400">{stats.skipped}</p>
+          </div>
+          <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+            <p className="text-xs text-slate-500">Failed</p>
+            <p className="mt-1 text-xl font-bold text-red-400">{stats.failed}</p>
+          </div>
+          <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+            <p className="text-xs text-slate-500">Page</p>
+            <p className="mt-1 text-xl font-bold text-slate-200">{stats.page}/{maxPages}</p>
+          </div>
         </div>
       )}
 
       <div className="flex flex-wrap gap-3">
-        <button
+        <Button
           onClick={runBrowserSync}
           disabled={running}
-          className="rounded-lg bg-purple-600 px-6 py-3 font-semibold hover:bg-purple-700 disabled:opacity-50"
+          className="!bg-violet-600 hover:!bg-violet-500"
         >
           {running ? 'Running...' : 'Run Browser Urdubox Sync'}
-        </button>
+        </Button>
         {running && (
-          <button
-            onClick={stop}
-            disabled={stopping}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-6 py-3 font-semibold hover:bg-red-800 disabled:opacity-50"
-          >
-            <span className="inline-block h-3 w-3 bg-white" />
+          <Button variant="danger" icon={<IconStop className="h-4 w-4" />} onClick={stop} disabled={stopping}>
             {stopping ? 'Stopping...' : 'Stop'}
-          </button>
+          </Button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

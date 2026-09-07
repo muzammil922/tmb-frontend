@@ -2,6 +2,25 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Input, Label } from '../components/ui/Input';
+import { EmptyState, LoadingState } from '../components/ui/EmptyState';
+import { IconPlus, IconSearch } from '../components/ui/icons';
+
+function sourceBadge(source: string) {
+  if (source === 'URDBOX') return 'purple' as const;
+  if (source === 'MOVIESAPI') return 'info' as const;
+  return 'default' as const;
+}
+
+function statusBadge(status: string) {
+  if (status === 'ACTIVE') return 'success' as const;
+  if (status === 'DRAFT') return 'warning' as const;
+  return 'default' as const;
+}
 
 export function MoviesPage() {
   const [search, setSearch] = useState('');
@@ -20,55 +39,110 @@ export function MoviesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-movies'] }),
   });
 
+  const movies = data?.data ?? [];
+  const total = movies.length;
+
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Movies</h1>
-        <Link to="/movies/new" className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold hover:bg-red-700">
-          + Add Movie
-        </Link>
-      </div>
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search movies..."
-        className="mb-6 w-full max-w-md rounded-lg bg-slate-800 px-4 py-2 outline-none focus:ring-2 focus:ring-red-500"
+      <PageHeader
+        title="Movies"
+        description="Search, edit, and manage all movies on your platform."
+        actions={
+          <Link to="/movies/new">
+            <Button icon={<IconPlus className="h-4 w-4" />}>Add Movie</Button>
+          </Link>
+        }
       />
-      {isLoading ? (
-        <p className="text-slate-400">Loading...</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl bg-slate-800">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-700 text-slate-400">
-              <tr>
-                <th className="p-4">Title</th>
-                <th className="p-4">Status</th>
-                <th className="p-4">Featured</th>
-                <th className="p-4">Source</th>
-                <th className="p-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.data?.map((movie: { id: string; title: string; status: string; featured: boolean; source: string }) => (
-                <tr key={movie.id} className="border-b border-slate-700/50">
-                  <td className="p-4">{movie.title}</td>
-                  <td className="p-4">
-                    <span className={`rounded px-2 py-0.5 text-xs ${movie.status === 'ACTIVE' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'}`}>
-                      {movie.status}
-                    </span>
-                  </td>
-                  <td className="p-4">{movie.featured ? 'Yes' : 'No'}</td>
-                  <td className="p-4">{movie.source}</td>
-                  <td className="p-4">
-                    <Link to={`/movies/${movie.id}/edit`} className="mr-3 text-red-400 hover:underline">Edit</Link>
-                    <button onClick={() => deleteMutation.mutate(movie.id)} className="text-red-400 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!data?.data?.length && <p className="p-8 text-center text-slate-500">No movies found</p>}
+
+      <Card className="mb-6" padding="md">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="relative max-w-md flex-1">
+            <Label hint="Filter by title">Search movies</Label>
+            <div className="relative">
+              <IconSearch className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Type movie title..."
+                className="pl-10"
+              />
+            </div>
+          </div>
+          <p className="text-sm text-slate-500">
+            Showing <span className="font-medium text-slate-300">{total}</span> movies
+          </p>
         </div>
+      </Card>
+
+      {isLoading ? (
+        <LoadingState label="Loading movies..." />
+      ) : !movies.length ? (
+        <Card>
+          <EmptyState
+            title="No movies found"
+            description={search ? 'Try a different search term.' : 'Add your first movie to get started.'}
+            action={
+              <Link to="/movies/new">
+                <Button icon={<IconPlus className="h-4 w-4" />}>Add Movie</Button>
+              </Link>
+            }
+          />
+        </Card>
+      ) : (
+        <Card padding="none" className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-700/80 bg-slate-900/40 text-xs uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3.5 font-semibold">Title</th>
+                  <th className="px-5 py-3.5 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 font-semibold">Featured</th>
+                  <th className="px-5 py-3.5 font-semibold">Source</th>
+                  <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/50">
+                {movies.map((movie: { id: string; title: string; status: string; featured: boolean; source: string }) => (
+                  <tr key={movie.id} className="transition hover:bg-slate-900/30">
+                    <td className="px-5 py-4">
+                      <p className="font-medium text-slate-100">{movie.title}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <Badge variant={statusBadge(movie.status)}>{movie.status}</Badge>
+                    </td>
+                    <td className="px-5 py-4">
+                      {movie.featured ? (
+                        <Badge variant="warning">Featured</Badge>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <Badge variant={sourceBadge(movie.source)}>{movie.source}</Badge>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <Link to={`/movies/${movie.id}/edit`}>
+                          <Button variant="ghost" size="sm">Edit</Button>
+                        </Link>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm(`Delete "${movie.title}"?`)) deleteMutation.mutate(movie.id);
+                          }}
+                          className="!border-red-500/30 !text-red-400 hover:!bg-red-500/10"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );

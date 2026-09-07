@@ -2,8 +2,19 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { BrowserUrduboxSync } from '../components/BrowserUrduboxSync';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Card, CardHeader } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Alert } from '../components/ui/Alert';
+import { Switch } from '../components/ui/Switch';
+import { Tabs } from '../components/ui/Tabs';
+import { Input, Label, Select } from '../components/ui/Input';
+import { LoadingState } from '../components/ui/EmptyState';
+import { IconStop } from '../components/ui/icons';
 
 type SyncSource = 'ALL' | 'URDBOX' | 'MOVIESAPI';
+type SyncTab = 'settings' | 'run' | 'browser' | 'jobs';
 
 interface SyncSettings {
   urduboxEnabled: boolean;
@@ -21,14 +32,6 @@ interface SyncStatus {
   cancelRequested: boolean;
   activeJobId: string | null;
   runningJobs?: SyncJob[];
-}
-
-function StopIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-      <rect x="6" y="6" width="12" height="12" rx="1" />
-    </svg>
-  );
 }
 
 interface SyncJob {
@@ -55,33 +58,6 @@ interface SyncLog {
   createdAt: string;
 }
 
-function Toggle({
-  label,
-  checked,
-  onChange,
-  description,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  description?: string;
-}) {
-  return (
-    <label className="flex items-start justify-between gap-4 rounded-lg bg-slate-800 p-4">
-      <div>
-        <p className="font-medium">{label}</p>
-        {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
-      </div>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-5 w-5 accent-red-600"
-      />
-    </label>
-  );
-}
-
 function JobLogs({ jobId }: { jobId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['sync-job-logs', jobId],
@@ -95,37 +71,33 @@ function JobLogs({ jobId }: { jobId: string }) {
   if (!data?.length) return <p className="p-4 text-sm text-slate-500">No logs for this job.</p>;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto border-t border-slate-700/60">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-700 text-left text-slate-400">
-            <th className="px-4 py-2">Title</th>
-            <th className="px-4 py-2">Action</th>
-            <th className="px-4 py-2">Type</th>
-            <th className="px-4 py-2">Reason</th>
-            <th className="px-4 py-2">TMDB ID</th>
+          <tr className="border-b border-slate-700/60 text-left text-xs uppercase tracking-wider text-slate-500">
+            <th className="px-4 py-2.5">Title</th>
+            <th className="px-4 py-2.5">Action</th>
+            <th className="px-4 py-2.5">Type</th>
+            <th className="px-4 py-2.5">Reason</th>
+            <th className="px-4 py-2.5">TMDB</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-700/40">
           {data.map((log) => (
-            <tr key={log.id} className="border-b border-slate-700/50">
-              <td className="px-4 py-2">{log.title || '—'}</td>
+            <tr key={log.id}>
+              <td className="px-4 py-2 text-slate-200">{log.title || '—'}</td>
               <td className="px-4 py-2">
-                <span
-                  className={
-                    log.action === 'IMPORTED'
-                      ? 'text-green-400'
-                      : log.action === 'FAILED'
-                        ? 'text-red-400'
-                        : 'text-yellow-400'
+                <Badge
+                  variant={
+                    log.action === 'IMPORTED' ? 'success' : log.action === 'FAILED' ? 'danger' : 'warning'
                   }
                 >
                   {log.action}
-                </span>
+                </Badge>
               </td>
-              <td className="px-4 py-2">{log.contentType}</td>
-              <td className="px-4 py-2 text-slate-400">{log.reason || '—'}</td>
-              <td className="px-4 py-2">{log.tmdbId ?? '—'}</td>
+              <td className="px-4 py-2 text-slate-400">{log.contentType}</td>
+              <td className="px-4 py-2 text-slate-500">{log.reason || '—'}</td>
+              <td className="px-4 py-2 text-slate-400">{log.tmdbId ?? '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -134,12 +106,20 @@ function JobLogs({ jobId }: { jobId: string }) {
   );
 }
 
+function jobStatusVariant(status: string) {
+  if (status === 'COMPLETED') return 'success';
+  if (status === 'FAILED') return 'danger';
+  if (status === 'RUNNING') return 'warning';
+  return 'default';
+}
+
 export function SyncPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<SyncSettings | null>(null);
   const [runSource, setRunSource] = useState<SyncSource>('ALL');
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<SyncTab>('settings');
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['sync-settings'],
@@ -157,7 +137,7 @@ export function SyncPage() {
     mutationFn: (data: SyncSettings) => api.put('/admin/sync/settings', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sync-settings'] });
-      setMessage({ type: 'success', text: 'Settings saved.' });
+      setMessage({ type: 'success', text: 'Settings saved successfully.' });
     },
     onError: () => setMessage({ type: 'error', text: 'Failed to save settings.' }),
   });
@@ -170,6 +150,7 @@ export function SyncPage() {
         type: started ? 'success' : 'error',
         text: started ? 'Sync started successfully.' : res.data?.message || 'Sync could not start.',
       });
+      setActiveTab('jobs');
       queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
       queryClient.invalidateQueries({ queryKey: ['sync-status'] });
     },
@@ -221,263 +202,252 @@ export function SyncPage() {
     },
   });
 
-  if (isLoading || !form) return <p className="text-slate-400">Loading...</p>;
+  if (isLoading || !form) return <LoadingState label="Loading sync settings..." />;
 
   const runningJobs = jobsData?.data?.filter((job) => job.status === 'RUNNING') ?? [];
   const isSyncRunning = Boolean(syncStatus?.running || runningJobs.length > 0);
   const stopping = Boolean(syncStatus?.cancelRequested || stopMutation.isPending || stopAutomationMutation.isPending);
+  const jobCount = jobsData?.data?.length ?? 0;
 
-  const statusColor = (status: string) => {
-    if (status === 'COMPLETED') return 'text-green-400';
-    if (status === 'FAILED') return 'text-red-400';
-    if (status === 'RUNNING') return 'text-yellow-400';
-    return 'text-slate-400';
-  };
+  const tabs = [
+    { id: 'settings', label: 'Settings' },
+    { id: 'run', label: 'Run Sync', badge: isSyncRunning ? '●' : undefined },
+    { id: 'browser', label: 'Browser Sync' },
+    { id: 'jobs', label: 'Job History', badge: jobCount || undefined },
+  ];
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">Content Sync</h1>
+      <PageHeader
+        title="Content Sync"
+        description="Configure sources, run bulk imports, and monitor sync jobs."
+      />
 
       {isSyncRunning && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-700 bg-red-950/40 px-5 py-4">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4">
           <div>
-            <p className="font-semibold text-red-200">
-              Sync running{stopping ? ' — stopping...' : ''}
+            <p className="font-semibold text-amber-200">
+              Sync in progress{stopping ? ' — stopping...' : ''}
             </p>
-            <p className="mt-1 text-sm text-red-300/80">
+            <p className="mt-1 text-sm text-amber-200/70">
               {runningJobs.length
                 ? runningJobs.map((job) => `${job.source} (+${job.imported} imported)`).join(' · ')
-                : 'Import in progress'}
+                : 'Import running in background'}
             </p>
           </div>
-          <button
-            onClick={() => stopMutation.mutate(undefined)}
-            disabled={stopping}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-          >
-            <StopIcon />
-            {stopping ? 'Stopping...' : 'Stop Sync Now'}
-          </button>
+          <Button variant="danger" icon={<IconStop className="h-4 w-4" />} onClick={() => stopMutation.mutate(undefined)} disabled={stopping}>
+            {stopping ? 'Stopping...' : 'Stop Sync'}
+          </Button>
         </div>
       )}
 
-      {message && (
-        <div
-          className={`mb-6 rounded-lg px-4 py-3 text-sm ${
-            message.type === 'success' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
-          }`}
-        >
-          {message.text}
+      {message && <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>}
+
+      <Tabs tabs={tabs} active={activeTab} onChange={(id) => setActiveTab(id as SyncTab)} />
+
+      {activeTab === 'settings' && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader title="Sources" description="Enable or disable content providers" />
+            <div className="space-y-3">
+              <Switch
+                label="Urdubox"
+                description="Import movies and series from Urdubox"
+                checked={form.urduboxEnabled}
+                onChange={(v) => setForm({ ...form, urduboxEnabled: v })}
+              />
+              <Switch
+                label="MoviesAPI"
+                description="Import movies and series from MoviesAPI"
+                checked={form.moviesApiEnabled}
+                onChange={(v) => setForm({ ...form, moviesApiEnabled: v })}
+              />
+              <Switch
+                label="Automation"
+                description="Run scheduled sync hourly within schedule window"
+                checked={form.automationEnabled}
+                onChange={(v) => setForm({ ...form, automationEnabled: v })}
+              />
+            </div>
+          </Card>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader title="Schedule Window" description="Leave empty for 24/7 automation" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Start time</Label>
+                  <Input
+                    type="time"
+                    value={form.scheduleStart || ''}
+                    onChange={(e) => setForm({ ...form, scheduleStart: e.target.value || null })}
+                  />
+                </div>
+                <div>
+                  <Label>End time</Label>
+                  <Input
+                    type="time"
+                    value={form.scheduleEnd || ''}
+                    onChange={(e) => setForm({ ...form, scheduleEnd: e.target.value || null })}
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader title="Sync Limits" description="Pages and items per sync run" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label hint="Max pages to fetch">Max pages</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={form.maxPagesPerRun}
+                    onChange={(e) => setForm({ ...form, maxPagesPerRun: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <Label hint="Items per page">Per page</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={form.resultsPerPage}
+                    onChange={(e) => setForm({ ...form, resultsPerPage: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </Card>
+
+            <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending} className="w-full sm:w-auto">
+              {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </div>
         </div>
       )}
 
-      <div className="mb-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Sources & Automation</h2>
-          <Toggle
-            label="Urdubox"
-            description="Import movies and series from Urdubox"
-            checked={form.urduboxEnabled}
-            onChange={(v) => setForm({ ...form, urduboxEnabled: v })}
-          />
-          <Toggle
-            label="MoviesAPI"
-            description="Import movies and series from MoviesAPI"
-            checked={form.moviesApiEnabled}
-            onChange={(v) => setForm({ ...form, moviesApiEnabled: v })}
-          />
-          <Toggle
-            label="Automation"
-            description="Run scheduled sync automatically (hourly, within schedule window)"
-            checked={form.automationEnabled}
-            onChange={(v) => setForm({ ...form, automationEnabled: v })}
-          />
-
-          <div className="rounded-lg bg-slate-800 p-4 space-y-3">
-            <p className="font-medium">Schedule Window</p>
-            <p className="text-sm text-slate-400">Automation only runs between these times (leave empty for 24/7)</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">Start</label>
-                <input
-                  type="time"
-                  value={form.scheduleStart || ''}
-                  onChange={(e) => setForm({ ...form, scheduleStart: e.target.value || null })}
-                  className="w-full rounded-lg bg-slate-700 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">End</label>
-                <input
-                  type="time"
-                  value={form.scheduleEnd || ''}
-                  onChange={(e) => setForm({ ...form, scheduleEnd: e.target.value || null })}
-                  className="w-full rounded-lg bg-slate-700 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-lg bg-slate-800 p-4 space-y-3">
-            <p className="font-medium">Sync Limits</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">Max pages per run</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={form.maxPagesPerRun}
-                  onChange={(e) => setForm({ ...form, maxPagesPerRun: Number(e.target.value) })}
-                  className="w-full rounded-lg bg-slate-700 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-slate-400">Results per page</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={form.resultsPerPage}
-                  onChange={(e) => setForm({ ...form, resultsPerPage: Number(e.target.value) })}
-                  className="w-full rounded-lg bg-slate-700 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => saveMutation.mutate(form)}
-            disabled={saveMutation.isPending}
-            className="rounded-lg bg-red-600 px-6 py-2 hover:bg-red-700 disabled:opacity-50"
-          >
-            {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
-
-        <div className="rounded-xl bg-slate-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">Manual Sync</h2>
-          <p className="mb-4 text-sm text-slate-400">
-            Run a sync immediately. Only enabled sources will be processed.
-          </p>
+      {activeTab === 'run' && (
+        <Card className="max-w-xl">
+          <CardHeader title="Manual Sync" description="Run an immediate sync from enabled sources" />
           {isSyncRunning && (
-            <div className="mb-4 rounded-lg border border-yellow-700 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-200">
-              Sync is running{syncStatus?.cancelRequested ? ' — stopping...' : '...'}
-            </div>
+            <Alert variant="warning">A sync is already running. You can stop it from the banner above.</Alert>
           )}
-          <select
-            value={runSource}
-            onChange={(e) => setRunSource(e.target.value as SyncSource)}
-            className="mb-4 w-full rounded-lg bg-slate-700 px-4 py-3"
-            disabled={isSyncRunning}
-          >
-            <option value="ALL">All enabled sources</option>
-            <option value="URDBOX">Urdubox only</option>
-            <option value="MOVIESAPI">MoviesAPI only</option>
-          </select>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <button
-              onClick={() => runMutation.mutate(runSource)}
-              disabled={runMutation.isPending || isSyncRunning}
-              className="rounded-lg bg-green-600 py-3 font-semibold hover:bg-green-700 disabled:opacity-50"
+          <div className="space-y-4">
+            <div>
+              <Label>Source</Label>
+              <Select
+                value={runSource}
+                onChange={(e) => setRunSource(e.target.value as SyncSource)}
+                disabled={isSyncRunning}
+              >
+                <option value="ALL">All enabled sources</option>
+                <option value="URDBOX">Urdubox only</option>
+                <option value="MOVIESAPI">MoviesAPI only</option>
+              </Select>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="success"
+                onClick={() => runMutation.mutate(runSource)}
+                disabled={runMutation.isPending || isSyncRunning}
+              >
+                {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => stopMutation.mutate(undefined)}
+                disabled={!isSyncRunning || stopping}
+              >
+                {stopping ? 'Stopping...' : 'Stop Sync'}
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => stopAutomationMutation.mutate()}
+              disabled={stopAutomationMutation.isPending || (!form.automationEnabled && !isSyncRunning)}
+              className="w-full"
             >
-              {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
-            </button>
-            <button
-              onClick={() => stopMutation.mutate(undefined)}
-              disabled={!isSyncRunning || stopping}
-              className="rounded-lg bg-red-700 py-3 font-semibold hover:bg-red-800 disabled:opacity-50"
-            >
-              {stopping ? 'Stopping...' : 'Stop Sync'}
-            </button>
+              {stopAutomationMutation.isPending ? 'Stopping...' : 'Stop Automation & All Syncs'}
+            </Button>
           </div>
-          <button
-            onClick={() => stopAutomationMutation.mutate()}
-            disabled={stopAutomationMutation.isPending || (!form.automationEnabled && !isSyncRunning)}
-            className="mt-3 w-full rounded-lg border border-red-700 py-3 font-semibold text-red-300 hover:bg-red-900/20 disabled:opacity-50"
-          >
-            {stopAutomationMutation.isPending ? 'Stopping...' : 'Stop Automation & Sync'}
-          </button>
-        </div>
-      </div>
+        </Card>
+      )}
 
-      <div className="mb-8">
+      {activeTab === 'browser' && (
         <BrowserUrduboxSync
           maxPages={form.maxPagesPerRun}
           resultsPerPage={form.resultsPerPage}
           onComplete={() => {
             queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
             queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+            setActiveTab('jobs');
           }}
         />
-      </div>
+      )}
 
-      <div className="rounded-xl bg-slate-800 p-6">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">Sync Jobs</h2>
-          {isSyncRunning && (
-            <button
-              onClick={() => stopMutation.mutate(undefined)}
-              disabled={stopping}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold hover:bg-red-800 disabled:opacity-50"
-            >
-              <StopIcon />
-              Stop All
-            </button>
-          )}
-        </div>
-        {jobsLoading ? (
-          <p className="text-slate-400">Loading jobs...</p>
-        ) : !jobsData?.data?.length ? (
-          <p className="text-slate-500">No sync jobs yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {jobsData.data.map((job) => (
-              <div
-                key={job.id}
-                className={`rounded-lg border ${job.status === 'RUNNING' ? 'border-yellow-600 bg-yellow-950/10' : 'border-slate-700'}`}
-              >
-                <div className="flex items-center gap-2 px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
-                    className="flex min-w-0 flex-1 items-center justify-between text-left hover:opacity-90"
-                  >
-                    <div className="flex flex-wrap items-center gap-4 text-sm">
-                      <span className="font-medium">{job.source}</span>
-                      <span className={statusColor(job.status)}>{job.status}</span>
-                      <span className="text-green-400">+{job.imported}</span>
-                      <span className="text-yellow-400">skip {job.skipped}</span>
-                      <span className="text-red-400">fail {job.failed}</span>
-                    </div>
-                    <span className="ml-4 shrink-0 text-xs text-slate-500">
-                      {job.startedAt ? new Date(job.startedAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
-                    </span>
-                  </button>
-                  {job.status === 'RUNNING' && (
+      {activeTab === 'jobs' && (
+        <Card padding="none">
+          <div className="flex items-center justify-between gap-4 border-b border-slate-700/60 px-5 py-4">
+            <div>
+              <h2 className="font-semibold text-white">Sync Jobs</h2>
+              <p className="text-sm text-slate-500">Click a job to view detailed logs</p>
+            </div>
+            {isSyncRunning && (
+              <Button variant="danger" size="sm" icon={<IconStop className="h-3.5 w-3.5" />} onClick={() => stopMutation.mutate(undefined)} disabled={stopping}>
+                Stop All
+              </Button>
+            )}
+          </div>
+          {jobsLoading ? (
+            <LoadingState label="Loading jobs..." />
+          ) : !jobsData?.data?.length ? (
+            <p className="p-8 text-center text-slate-500">No sync jobs yet. Run a sync to get started.</p>
+          ) : (
+            <div className="divide-y divide-slate-700/50">
+              {jobsData.data.map((job) => (
+                <div key={job.id} className={job.status === 'RUNNING' ? 'bg-amber-500/5' : ''}>
+                  <div className="flex items-center gap-2 px-4 py-3">
                     <button
                       type="button"
-                      title="Stop this job"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        stopMutation.mutate(job.id);
-                      }}
-                      disabled={stopping}
-                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-700 text-white hover:bg-red-600 disabled:opacity-50"
+                      onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                      className="flex min-w-0 flex-1 items-center justify-between text-left"
                     >
-                      <StopIcon />
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <span className="font-medium text-slate-200">{job.source}</span>
+                        <Badge variant={jobStatusVariant(job.status)}>{job.status}</Badge>
+                        <span className="text-emerald-400">+{job.imported}</span>
+                        <span className="text-amber-400/80">skip {job.skipped}</span>
+                        <span className="text-red-400/80">fail {job.failed}</span>
+                      </div>
+                      <span className="ml-4 shrink-0 text-xs text-slate-500">
+                        {job.startedAt ? new Date(job.startedAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
+                      </span>
                     </button>
+                    {job.status === 'RUNNING' && (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        icon={<IconStop className="h-3.5 w-3.5" />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          stopMutation.mutate(job.id);
+                        }}
+                        disabled={stopping}
+                        aria-label="Stop job"
+                      />
+                    )}
+                  </div>
+                  {job.errorMessage && (
+                    <p className="px-4 pb-2 text-xs text-orange-300">{job.errorMessage}</p>
                   )}
+                  {expandedJobId === job.id && <JobLogs jobId={job.id} />}
                 </div>
-                {job.errorMessage && (
-                  <p className="px-4 pb-3 text-xs text-orange-300">{job.errorMessage}</p>
-                )}
-                {expandedJobId === job.id && <JobLogs jobId={job.id} />}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

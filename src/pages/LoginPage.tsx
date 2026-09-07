@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuthStore } from '../store/auth';
+import { Button } from '../components/ui/Button';
+import { Input, Label } from '../components/ui/Input';
+import { Alert } from '../components/ui/Alert';
 
 export function LoginPage() {
-  const [email, setEmail] = useState('admin@tmb.com');
-  const [password, setPassword] = useState('Admin@123456');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -31,35 +34,45 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900">
-      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl bg-slate-800 p-8 shadow-xl">
-        <h1 className="mb-2 text-2xl font-bold">TMB Admin</h1>
-        <p className="mb-6 text-sm text-slate-400">Sign in to manage content</p>
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-lg bg-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-red-500"
-          placeholder="Email"
-          required
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-6 w-full rounded-lg bg-slate-700 px-4 py-3 outline-none focus:ring-2 focus:ring-red-500"
-          placeholder="Password"
-          required
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-red-600 py-3 font-semibold hover:bg-red-700 disabled:opacity-50"
-        >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-      </form>
+    <div className="flex min-h-screen items-center justify-center bg-[#0b1120] px-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-600 text-xl font-bold text-white shadow-lg shadow-red-900/40">
+            T
+          </span>
+          <h1 className="text-2xl font-bold text-white">TMB Admin</h1>
+          <p className="mt-1 text-sm text-slate-400">Sign in to manage your content</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-700/80 bg-slate-800/60 p-8 shadow-xl backdrop-blur-sm">
+          {error && <Alert variant="error">{error}</Alert>}
+          <div className="space-y-4">
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@example.com"
+                required
+              />
+            </div>
+            <div>
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <Button type="submit" disabled={loading} className="w-full" size="lg">
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

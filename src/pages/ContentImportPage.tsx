@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import api from '../lib/api';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Card, CardHeader } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { Alert } from '../components/ui/Alert';
+import { Input, Label, Select } from '../components/ui/Input';
 
 type ContentType = 'movie' | 'series';
 
@@ -79,114 +85,155 @@ export function ContentImportPage() {
 
   const canImport = checkResult?.action === 'IMPORT';
   const isPending = checkMutation.isPending || importUrduboxMutation.isPending || importMoviesApiMutation.isPending;
+  const step = checkResult ? 2 : 1;
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">Import Content</h1>
-      <p className="mb-6 text-slate-400">
-        Check a TMDB ID before importing from Urdubox or MoviesAPI.
-      </p>
+      <PageHeader
+        title="Import Content"
+        description="Import a single movie or series by TMDB ID. Check availability first, then choose your source."
+      />
 
-      {message && (
-        <div
-          className={`mb-6 rounded-lg px-4 py-3 text-sm ${
-            message.type === 'success' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
-          }`}
-        >
-          {message.text}
+      {/* Step indicator */}
+      <div className="mb-8 flex items-center gap-3">
+        <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${step >= 1 ? 'bg-red-600/20 text-red-300 ring-1 ring-red-500/30' : 'bg-slate-800 text-slate-500'}`}>
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs text-white">1</span>
+          Enter TMDB ID
         </div>
-      )}
-
-      <div className="mb-8 max-w-lg space-y-4 rounded-xl bg-slate-800 p-6">
-        <div>
-          <label className="mb-1 block text-sm text-slate-400">TMDB ID</label>
-          <input
-            type="number"
-            value={tmdbId}
-            onChange={(e) => {
-              setTmdbId(e.target.value);
-              setCheckResult(null);
-            }}
-            placeholder="e.g. 550"
-            className="w-full rounded-lg bg-slate-700 px-4 py-3"
-          />
+        <div className="h-px flex-1 bg-slate-700" />
+        <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${step >= 2 ? 'bg-red-600/20 text-red-300 ring-1 ring-red-500/30' : 'bg-slate-800 text-slate-500'}`}>
+          <span className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${step >= 2 ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-400'}`}>2</span>
+          Review & Import
         </div>
-        <div>
-          <label className="mb-1 block text-sm text-slate-400">Content Type</label>
-          <select
-            value={contentType}
-            onChange={(e) => {
-              setContentType(e.target.value as ContentType);
-              setCheckResult(null);
-            }}
-            className="w-full rounded-lg bg-slate-700 px-4 py-3"
-          >
-            <option value="movie">Movie</option>
-            <option value="series">Series</option>
-          </select>
-        </div>
-        <button
-          onClick={() => checkMutation.mutate()}
-          disabled={!tmdbId || isPending}
-          className="w-full rounded-lg bg-red-600 py-3 font-semibold hover:bg-red-700 disabled:opacity-50"
-        >
-          {checkMutation.isPending ? 'Checking...' : 'Check Content'}
-        </button>
       </div>
 
-      {checkResult && (
-        <div className="max-w-2xl rounded-xl bg-slate-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">Check Result</h2>
-          <div className="space-y-2 text-sm">
-            <p>
-              <span className="text-slate-400">Action:</span>{' '}
-              <span className={checkResult.action === 'IMPORT' ? 'text-green-400' : 'text-yellow-400'}>
-                {checkResult.action}
-              </span>
-            </p>
-            <p><span className="text-slate-400">Message:</span> {checkResult.message}</p>
-            <p><span className="text-slate-400">Reason:</span> {checkResult.reason}</p>
-            <p>
-              <span className="text-slate-400">Urdubox available:</span>{' '}
-              {checkResult.urduboxAvailable ? 'Yes' : 'No'}
-            </p>
-            <p>
-              <span className="text-slate-400">Available sources:</span>{' '}
-              {checkResult.availableSources.join(', ')}
-            </p>
-            {checkResult.existingId && (
-              <p>
-                <span className="text-slate-400">Existing:</span> {checkResult.existingTitle}
-                {contentType === 'movie' && (
-                  <button
-                    onClick={() => navigate(`/movies/${checkResult.existingId}/edit`)}
-                    className="ml-2 text-red-400 hover:underline"
-                  >
-                    Edit movie
-                  </button>
-                )}
-              </p>
-            )}
-          </div>
+      {message && <Alert variant={message.type === 'success' ? 'success' : 'error'}>{message.text}</Alert>}
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              onClick={() => importUrduboxMutation.mutate()}
-              disabled={!canImport || !checkResult.urduboxAvailable || isPending}
-              className="rounded-lg bg-green-600 px-6 py-2 hover:bg-green-700 disabled:opacity-50"
-            >
-              {importUrduboxMutation.isPending ? 'Importing...' : 'Import from Urdubox'}
-            </button>
-            <button
-              onClick={() => importMoviesApiMutation.mutate()}
-              disabled={!canImport || isPending}
-              className="rounded-lg bg-blue-600 px-6 py-2 hover:bg-blue-700 disabled:opacity-50"
-            >
-              {importMoviesApiMutation.isPending ? 'Importing...' : 'Import from MoviesAPI'}
-            </button>
-          </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader title="Step 1 — Lookup" description="Enter the TMDB ID from themoviedb.org" />
+            <div className="space-y-4">
+              <div>
+                <Label hint="Find this on TMDB movie/series page URL">TMDB ID</Label>
+                <Input
+                  type="number"
+                  value={tmdbId}
+                  onChange={(e) => {
+                    setTmdbId(e.target.value);
+                    setCheckResult(null);
+                  }}
+                  placeholder="e.g. 550"
+                />
+              </div>
+              <div>
+                <Label>Content Type</Label>
+                <Select
+                  value={contentType}
+                  onChange={(e) => {
+                    setContentType(e.target.value as ContentType);
+                    setCheckResult(null);
+                  }}
+                >
+                  <option value="movie">Movie</option>
+                  <option value="series">Series</option>
+                </Select>
+              </div>
+              <Button
+                onClick={() => checkMutation.mutate()}
+                disabled={!tmdbId || isPending}
+                className="w-full"
+              >
+                {checkMutation.isPending ? 'Checking...' : 'Check Availability'}
+              </Button>
+            </div>
+          </Card>
         </div>
-      )}
+
+        <div className="lg:col-span-3">
+          {checkResult ? (
+            <Card>
+              <CardHeader
+                title="Step 2 — Import"
+                description="Review the check result and choose a source"
+              />
+              <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+                  <p className="text-xs text-slate-500">Action</p>
+                  <div className="mt-1">
+                    <Badge variant={checkResult.action === 'IMPORT' ? 'success' : 'warning'}>
+                      {checkResult.action}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-900/50 p-3 text-center">
+                  <p className="text-xs text-slate-500">Urdubox</p>
+                  <div className="mt-1">
+                    <Badge variant={checkResult.urduboxAvailable ? 'success' : 'default'}>
+                      {checkResult.urduboxAvailable ? 'Available' : 'No'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-900/50 p-3 text-center sm:col-span-2">
+                  <p className="text-xs text-slate-500">Sources</p>
+                  <p className="mt-1 text-sm font-medium text-slate-200">
+                    {checkResult.availableSources.join(' · ')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-6 space-y-2 rounded-xl border border-slate-700/60 bg-slate-900/30 p-4 text-sm">
+                <p><span className="text-slate-500">Message:</span> <span className="text-slate-200">{checkResult.message}</span></p>
+                <p><span className="text-slate-500">Reason:</span> <span className="text-slate-300">{checkResult.reason}</span></p>
+                {checkResult.existingId && (
+                  <p>
+                    <span className="text-slate-500">Already exists:</span>{' '}
+                    <span className="text-slate-200">{checkResult.existingTitle}</span>
+                    {contentType === 'movie' && (
+                      <button
+                        onClick={() => navigate(`/movies/${checkResult.existingId}/edit`)}
+                        className="ml-2 text-red-400 hover:underline"
+                      >
+                        Edit →
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  variant="success"
+                  onClick={() => importUrduboxMutation.mutate()}
+                  disabled={!canImport || !checkResult.urduboxAvailable || isPending}
+                >
+                  {importUrduboxMutation.isPending ? 'Importing...' : 'Import from Urdubox'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => importMoviesApiMutation.mutate()}
+                  disabled={!canImport || isPending}
+                  className="!bg-sky-600 hover:!bg-sky-500"
+                >
+                  {importMoviesApiMutation.isPending ? 'Importing...' : 'Import from MoviesAPI'}
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <Card className="flex min-h-[280px] items-center justify-center">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-700/50 text-slate-500">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <p className="font-medium text-slate-300">No check result yet</p>
+                <p className="mt-1 text-sm text-slate-500">Enter a TMDB ID and click Check Availability</p>
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
