@@ -4,6 +4,8 @@ import { useAuthStore } from '../store/auth';
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/movies', label: 'Movies' },
+  { to: '/sync', label: 'Content Sync' },
+  { to: '/content/import', label: 'Import Content' },
   { to: '/homepage', label: 'Homepage' },
   { to: '/banners', label: 'Banners' },
   { to: '/categories', label: 'Categories' },

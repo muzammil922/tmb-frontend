@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
+import { getTmdbImageUrl } from '../lib/shared';
 
 export function MovieEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -74,6 +75,43 @@ export function MovieEditPage() {
             <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} />
             Featured
           </label>
+
+          <div className="rounded-lg bg-slate-800/50 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-slate-300">Poster & Backdrop</h3>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Poster path or URL</label>
+              <input
+                value={form.posterPath}
+                onChange={(e) => setForm({ ...form, posterPath: e.target.value })}
+                placeholder="/path.jpg or https://..."
+                className="w-full rounded-lg bg-slate-700 px-4 py-2 text-sm"
+              />
+              {getTmdbImageUrl(form.posterPath, 'w185') && (
+                <img
+                  src={getTmdbImageUrl(form.posterPath, 'w185')!}
+                  alt="Poster preview"
+                  className="mt-2 h-28 w-20 rounded object-cover"
+                />
+              )}
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Backdrop path or URL</label>
+              <input
+                value={form.backdropPath}
+                onChange={(e) => setForm({ ...form, backdropPath: e.target.value })}
+                placeholder="/path.jpg or https://..."
+                className="w-full rounded-lg bg-slate-700 px-4 py-2 text-sm"
+              />
+              {getTmdbImageUrl(form.backdropPath, 'w780') && (
+                <img
+                  src={getTmdbImageUrl(form.backdropPath, 'w780')!}
+                  alt="Backdrop preview"
+                  className="mt-2 h-24 w-full max-w-sm rounded object-cover"
+                />
+              )}
+            </div>
+          </div>
+
           <button onClick={() => updateMutation.mutate(form)} className="rounded-lg bg-red-600 px-6 py-2 hover:bg-red-700">
             Save Changes
           </button>

@@ -11,6 +11,8 @@ import { HomepagePage } from './pages/HomepagePage';
 import { BannersPage } from './pages/BannersPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { UsersPage } from './pages/UsersPage';
+import { SyncPage } from './pages/SyncPage';
+import { ContentImportPage } from './pages/ContentImportPage';
 
 const queryClient = new QueryClient();
 
@@ -35,6 +37,8 @@ export default function App() {
             <Route path="banners" element={<BannersPage />} />
             <Route path="categories" element={<CategoriesPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="sync" element={<SyncPage />} />
+            <Route path="content/import" element={<ContentImportPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
