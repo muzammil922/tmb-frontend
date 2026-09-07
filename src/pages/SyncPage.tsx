@@ -187,7 +187,7 @@ export function SyncPage() {
       const { data } = await api.get<SyncStatus>('/admin/sync/status');
       return data;
     },
-    refetchInterval: 3000,
+    refetchInterval: (query) => (query.state.data?.running ? 5000 : false),
   });
 
   const { data: jobsData, isLoading: jobsLoading } = useQuery({
@@ -198,7 +198,7 @@ export function SyncPage() {
     },
     refetchInterval: (query) => {
       const hasRunning = (query.state.data?.data ?? []).some((job) => job.status === 'RUNNING');
-      return hasRunning ? 2000 : 10000;
+      return hasRunning ? 5000 : false;
     },
   });
 
