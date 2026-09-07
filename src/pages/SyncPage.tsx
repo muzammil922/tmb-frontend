@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
+import { BrowserUrduboxSync } from '../components/BrowserUrduboxSync';
 
 type SyncSource = 'ALL' | 'URDBOX' | 'MOVIESAPI';
 
@@ -398,6 +399,17 @@ export function SyncPage() {
             {stopAutomationMutation.isPending ? 'Stopping...' : 'Stop Automation & Sync'}
           </button>
         </div>
+      </div>
+
+      <div className="mb-8">
+        <BrowserUrduboxSync
+          maxPages={form.maxPagesPerRun}
+          resultsPerPage={form.resultsPerPage}
+          onComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+            queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+          }}
+        />
       </div>
 
       <div className="rounded-xl bg-slate-800 p-6">
