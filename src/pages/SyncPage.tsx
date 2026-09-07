@@ -19,6 +19,15 @@ interface SyncStatus {
   running: boolean;
   cancelRequested: boolean;
   activeJobId: string | null;
+  runningJobs?: SyncJob[];
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx="1" />
+    </svg>
+  );
 }
 
 interface SyncJob {
@@ -167,11 +176,13 @@ export function SyncPage() {
   });
 
   const stopMutation = useMutation({
-    mutationFn: () => api.post('/admin/sync/stop'),
+    mutationFn: (jobId?: string) =>
+      jobId ? api.post(`/admin/sync/jobs/${jobId}/stop`) : api.post('/admin/sync/stop'),
     onSuccess: (res) => {
       setMessage({ type: 'success', text: res.data?.message || 'Stop requested.' });
       queryClient.invalidateQueries({ queryKey: ['sync-status'] });
       queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-settings'] });
     },
     onError: () => setMessage({ type: 'error', text: 'Failed to stop sync.' }),
   });
@@ -203,10 +214,17 @@ export function SyncPage() {
       const { data } = await api.get<{ data: SyncJob[]; page: number; totalPages: number }>('/admin/sync/jobs');
       return data;
     },
-    refetchInterval: 10000,
+    refetchInterval: (query) => {
+      const hasRunning = (query.state.data?.data ?? []).some((job) => job.status === 'RUNNING');
+      return hasRunning ? 2000 : 10000;
+    },
   });
 
   if (isLoading || !form) return <p className="text-slate-400">Loading...</p>;
+
+  const runningJobs = jobsData?.data?.filter((job) => job.status === 'RUNNING') ?? [];
+  const isSyncRunning = Boolean(syncStatus?.running || runningJobs.length > 0);
+  const stopping = Boolean(syncStatus?.cancelRequested || stopMutation.isPending || stopAutomationMutation.isPending);
 
   const statusColor = (status: string) => {
     if (status === 'COMPLETED') return 'text-green-400';
@@ -215,11 +233,32 @@ export function SyncPage() {
     return 'text-slate-400';
   };
 
-  const isSyncRunning = syncStatus?.running ?? false;
-
   return (
     <div>
       <h1 className="mb-6 text-2xl font-bold">Content Sync</h1>
+
+      {isSyncRunning && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-red-700 bg-red-950/40 px-5 py-4">
+          <div>
+            <p className="font-semibold text-red-200">
+              Sync running{stopping ? ' — stopping...' : ''}
+            </p>
+            <p className="mt-1 text-sm text-red-300/80">
+              {runningJobs.length
+                ? runningJobs.map((job) => `${job.source} (+${job.imported} imported)`).join(' · ')
+                : 'Import in progress'}
+            </p>
+          </div>
+          <button
+            onClick={() => stopMutation.mutate(undefined)}
+            disabled={stopping}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            <StopIcon />
+            {stopping ? 'Stopping...' : 'Stop Sync Now'}
+          </button>
+        </div>
+      )}
 
       {message && (
         <div
@@ -344,11 +383,11 @@ export function SyncPage() {
               {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
             </button>
             <button
-              onClick={() => stopMutation.mutate()}
-              disabled={!isSyncRunning || stopMutation.isPending}
+              onClick={() => stopMutation.mutate(undefined)}
+              disabled={!isSyncRunning || stopping}
               className="rounded-lg bg-red-700 py-3 font-semibold hover:bg-red-800 disabled:opacity-50"
             >
-              {stopMutation.isPending ? 'Stopping...' : 'Stop Sync'}
+              {stopping ? 'Stopping...' : 'Stop Sync'}
             </button>
           </div>
           <button
@@ -362,7 +401,19 @@ export function SyncPage() {
       </div>
 
       <div className="rounded-xl bg-slate-800 p-6">
-        <h2 className="mb-4 text-lg font-semibold">Sync Jobs</h2>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold">Sync Jobs</h2>
+          {isSyncRunning && (
+            <button
+              onClick={() => stopMutation.mutate(undefined)}
+              disabled={stopping}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold hover:bg-red-800 disabled:opacity-50"
+            >
+              <StopIcon />
+              Stop All
+            </button>
+          )}
+        </div>
         {jobsLoading ? (
           <p className="text-slate-400">Loading jobs...</p>
         ) : !jobsData?.data?.length ? (
@@ -370,23 +421,42 @@ export function SyncPage() {
         ) : (
           <div className="space-y-2">
             {jobsData.data.map((job) => (
-              <div key={job.id} className="rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
-                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-700/50"
-                >
-                  <div className="flex flex-wrap items-center gap-4 text-sm">
-                    <span className="font-medium">{job.source}</span>
-                    <span className={statusColor(job.status)}>{job.status}</span>
-                    <span className="text-green-400">+{job.imported}</span>
-                    <span className="text-yellow-400">skip {job.skipped}</span>
-                    <span className="text-red-400">fail {job.failed}</span>
-                  </div>
-                  <span className="text-xs text-slate-500">
-                    {job.startedAt ? new Date(job.startedAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
-                  </span>
-                </button>
+              <div
+                key={job.id}
+                className={`rounded-lg border ${job.status === 'RUNNING' ? 'border-yellow-600 bg-yellow-950/10' : 'border-slate-700'}`}
+              >
+                <div className="flex items-center gap-2 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                    className="flex min-w-0 flex-1 items-center justify-between text-left hover:opacity-90"
+                  >
+                    <div className="flex flex-wrap items-center gap-4 text-sm">
+                      <span className="font-medium">{job.source}</span>
+                      <span className={statusColor(job.status)}>{job.status}</span>
+                      <span className="text-green-400">+{job.imported}</span>
+                      <span className="text-yellow-400">skip {job.skipped}</span>
+                      <span className="text-red-400">fail {job.failed}</span>
+                    </div>
+                    <span className="ml-4 shrink-0 text-xs text-slate-500">
+                      {job.startedAt ? new Date(job.startedAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
+                    </span>
+                  </button>
+                  {job.status === 'RUNNING' && (
+                    <button
+                      type="button"
+                      title="Stop this job"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        stopMutation.mutate(job.id);
+                      }}
+                      disabled={stopping}
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-700 text-white hover:bg-red-600 disabled:opacity-50"
+                    >
+                      <StopIcon />
+                    </button>
+                  )}
+                </div>
                 {job.errorMessage && (
                   <p className="px-4 pb-3 text-xs text-orange-300">{job.errorMessage}</p>
                 )}
