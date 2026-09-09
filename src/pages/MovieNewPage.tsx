@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import api from '../lib/api';
+import { IconChevronLeft } from '../components/ui/icons';
 
 export function MovieNewPage() {
   const [tab, setTab] = useState<'tmdb' | 'manual'>('tmdb');
@@ -31,7 +32,17 @@ export function MovieNewPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">Add Movie</h1>
+      <div className="mb-6 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => navigate('/movies')}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition"
+        >
+          <IconChevronLeft className="h-4 w-4" />
+          <span>Back to Movies</span>
+        </button>
+        <h1 className="text-2xl font-bold text-white">Add Movie</h1>
+      </div>
       <div className="mb-6 flex gap-2">
         <button onClick={() => setTab('tmdb')} className={`rounded-lg px-4 py-2 ${tab === 'tmdb' ? 'bg-red-600' : 'bg-slate-800'}`}>
           Import from TMDB

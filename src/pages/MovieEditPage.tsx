@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { getTmdbImageUrl } from '../lib/shared';
+import { IconChevronLeft } from '../components/ui/icons';
 
 export function MovieEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -62,7 +63,17 @@ export function MovieEditPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">Edit: {form.title}</h1>
+      <div className="mb-6 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => navigate('/movies')}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition"
+        >
+          <IconChevronLeft className="h-4 w-4" />
+          <span>Back to Movies</span>
+        </button>
+        <h1 className="text-2xl font-bold text-white truncate max-w-xl">Edit: {form.title}</h1>
+      </div>
       <div className="grid max-w-4xl grid-cols-1 gap-8 lg:grid-cols-2">
         <div className="space-y-4">
           <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg bg-slate-800 px-4 py-3" placeholder="Title" />

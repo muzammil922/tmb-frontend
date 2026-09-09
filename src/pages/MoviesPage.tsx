@@ -90,6 +90,7 @@ export function MoviesPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedPoster, setSelectedPoster] = useState<{
     title: string;
     posterUrl: string;
@@ -102,10 +103,22 @@ export function MoviesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-movies', search, page],
     queryFn: async () => {
-      const { data } = await api.get('/admin/movies', { params: { search, page } });
+      const { data } = await api.get('/admin/movies', { params: { search, page, limit: 50 } });
       return data;
     },
   });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['admin-categories'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/categories');
+      return data;
+    },
+  });
+
+  const categoriesList: { id: string; name: string; slug: string }[] = Array.isArray(categoriesData)
+    ? categoriesData
+    : (categoriesData as any)?.data || [];
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/movies/${id}`),
@@ -159,9 +172,21 @@ export function MoviesPage() {
       const stream = getStreamStatus(movie);
       if (filter === 'playable') return stream.playable;
       if (filter === 'no-stream') return !stream.playable;
+
+      if (selectedCategory !== 'all') {
+        const matchesCat =
+          movie.categoryMovies?.some(
+            (cm) => cm.category.slug === selectedCategory || cm.category.id === selectedCategory,
+          ) ||
+          movie.genres?.some((g) =>
+            g.name.toLowerCase().includes(selectedCategory.toLowerCase()),
+          );
+        if (!matchesCat) return false;
+      }
+
       return true;
     });
-  }, [rawMovies, filter]);
+  }, [rawMovies, filter, selectedCategory]);
 
   // Counts for filters
   const counts = useMemo(() => {
@@ -368,6 +393,28 @@ export function MoviesPage() {
               <span className="h-1.5 w-1.5 rounded-full bg-red-400"></span>
               Chal Nahi Rahi ({counts.noStream})
             </button>
+
+            {/* Category Filter Selector */}
+            {categoriesList.length > 0 && (
+              <div className="flex items-center gap-2 sm:ml-auto">
+                <span className="text-xs font-semibold text-slate-400 whitespace-nowrap">Category:</span>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => {
+                    setSelectedCategory(e.target.value);
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1 text-xs font-medium text-slate-200 focus:border-red-500 focus:outline-none"
+                >
+                  <option value="all">All Categories ({rawMovies.length})</option>
+                  {categoriesList.map((cat) => (
+                    <option key={cat.id} value={cat.slug}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -398,6 +445,7 @@ export function MoviesPage() {
                 <tr className="border-b border-slate-700/80 bg-slate-900/60 text-xs uppercase tracking-wider text-slate-400">
                   <th className="px-4 py-3.5 font-semibold text-center w-16">Poster</th>
                   <th className="px-5 py-3.5 font-semibold">Title & Details</th>
+                  <th className="px-4 py-3.5 font-semibold">Category</th>
                   <th className="px-5 py-3.5 font-semibold">Website Live Status</th>
                   <th className="px-5 py-3.5 font-semibold">Stream Status</th>
                   <th className="px-4 py-3.5 font-semibold text-center">Featured</th>
@@ -480,6 +528,34 @@ export function MoviesPage() {
                               </span>
                             )}
                           </div>
+                        </div>
+                      </td>
+
+                      {/* Movie Categories */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {movie.categoryMovies && movie.categoryMovies.length > 0 ? (
+                            movie.categoryMovies.map((cm) => (
+                              <span
+                                key={cm.category.id}
+                                className="inline-flex items-center rounded-md bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 shadow-sm"
+                                title={cm.category.name}
+                              >
+                                {cm.category.name.replace(/^[^\w\s]+/, '').trim()}
+                              </span>
+                            ))
+                          ) : movie.genres && movie.genres.length > 0 ? (
+                            movie.genres.slice(0, 2).map((g) => (
+                              <span
+                                key={g.id}
+                                className="inline-flex items-center rounded-md bg-slate-800 border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-300"
+                              >
+                                {g.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-slate-500 italic">No category</span>
+                          )}
                         </div>
                       </td>
 

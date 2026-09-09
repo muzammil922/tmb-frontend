@@ -52,6 +52,8 @@ export interface Movie {
   cast?: MovieCast[];
   contentSource?: string | null;
   playbackMode?: string | null;
+  categoryMovies?: { category: Category; order?: number }[];
+  categories?: Category[];
   createdAt?: string;
   updatedAt?: string;
 }

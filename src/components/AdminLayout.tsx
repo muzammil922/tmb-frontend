@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
 import {
   IconBanner,
   IconCategory,
+  IconChevronLeft,
   IconClose,
   IconDashboard,
   IconFilm,
@@ -68,6 +69,7 @@ function isActive(pathname: string, to: string) {
 
 export function AdminLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -167,6 +169,20 @@ export function AdminLayout() {
               >
                 <IconMenu />
               </button>
+
+              {/* Universal Back Button across all admin pages */}
+              {location.pathname !== '/' && (
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition shadow-sm"
+                  title="Go back to previous screen"
+                >
+                  <IconChevronLeft className="h-4 w-4" />
+                  <span>Back</span>
+                </button>
+              )}
+
               <div>
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Admin Panel</p>
                 <h2 className="text-lg font-semibold text-white">{pageTitle}</h2>
