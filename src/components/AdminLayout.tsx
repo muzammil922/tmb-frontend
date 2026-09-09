@@ -172,14 +172,6 @@ export function AdminLayout() {
                 <h2 className="text-lg font-semibold text-white">{pageTitle}</h2>
               </div>
             </div>
-            <div className="hidden items-center gap-2 sm:flex">
-              <Link
-                to="/movies/new"
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-red-900/30 transition hover:bg-red-500"
-              >
-                + Add Movie
-              </Link>
-            </div>
           </div>
         </header>
 
