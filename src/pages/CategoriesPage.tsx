@@ -53,6 +53,17 @@ export function CategoriesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-categories'] }),
   });
 
+  const [autoCategorizeMsg, setAutoCategorizeMsg] = useState<string | null>(null);
+
+  const autoCategorizeMutation = useMutation({
+    mutationFn: () => api.post('/admin/categories/auto-categorize', {}),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
+      setAutoCategorizeMsg(res.data?.message || 'Movies successfully categorized!');
+      setTimeout(() => setAutoCategorizeMsg(null), 6000);
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/categories/${id}`),
     onSuccess: () => {
@@ -106,13 +117,23 @@ export function CategoriesPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            onClick={() => autoCategorizeMutation.mutate()}
+            disabled={autoCategorizeMutation.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition disabled:opacity-50 shadow-sm"
+            title="Automatically scan all movies and map them to matching categories based on genres, language, and UrduBox source"
+          >
+            <IconSync className={`h-3.5 w-3.5 text-amber-400 ${autoCategorizeMutation.isPending ? 'animate-spin' : ''}`} />
+            <span>{autoCategorizeMutation.isPending ? 'Categorizing...' : '⚡ Auto-Categorize All Movies'}</span>
+          </button>
+
+          <button
             onClick={() => seedDefaultsMutation.mutate()}
             disabled={seedDefaultsMutation.isPending}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition disabled:opacity-50"
             title="Import standard website categories (Action, Sci-Fi, UrduBox, Drama, etc.)"
           >
             <IconSync className={`h-3.5 w-3.5 text-slate-400 ${seedDefaultsMutation.isPending ? 'animate-spin' : ''}`} />
-            <span>{seedDefaultsMutation.isPending ? 'Populating...' : 'Populate Default Categories'}</span>
+            <span>{seedDefaultsMutation.isPending ? 'Populating...' : 'Default Categories'}</span>
           </button>
 
           <button
@@ -124,6 +145,17 @@ export function CategoriesPage() {
           </button>
         </div>
       </div>
+
+      {/* Auto-categorize Success Notification */}
+      {autoCategorizeMsg && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/40 p-3.5 text-xs text-emerald-200 flex items-center justify-between animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 font-bold">✓</span>
+            <span className="font-semibold">{autoCategorizeMsg}</span>
+          </div>
+          <button onClick={() => setAutoCategorizeMsg(null)} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+      )}
 
       {/* Website Category Explainer */}
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/20 p-4 text-xs text-emerald-300 flex items-start gap-3">
