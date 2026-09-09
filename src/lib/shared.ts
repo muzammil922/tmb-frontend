@@ -50,6 +50,8 @@ export interface Movie {
   trailerKey?: string | null;
   genres?: Genre[];
   cast?: MovieCast[];
+  contentSource?: string | null;
+  playbackMode?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -117,6 +119,17 @@ export function getTmdbImageUrl(path: string | null | undefined, size: TmdbImage
   if (!path) return null;
   if (path.startsWith('http')) return path;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
+}
+
+export function formatUploadDate(dateStr?: string | null): string {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
 }
 
 export const API_ROUTES = {
