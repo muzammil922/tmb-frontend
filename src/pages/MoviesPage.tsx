@@ -19,13 +19,30 @@ import {
 } from '../components/ui/icons';
 import { getTmdbImageUrl, formatUploadDate, type Movie } from '../lib/shared';
 
-function sourceBadge(source: string) {
-  if (source === 'URDBOX') return 'purple' as const;
-  if (source === 'MOVIESAPI') return 'info' as const;
-  return 'default' as const;
-}
+type FilterType =
+  | 'all'
+  | 'live'
+  | 'draft'
+  | 'featured'
+  | 'urdubox'
+  | 'moviesapi'
+  | 'tmdb'
+  | 'manual'
+  | 'playable'
+  | 'no-stream';
 
-type FilterType = 'all' | 'live' | 'draft' | 'playable' | 'no-stream';
+function getEffectiveSource(movie: Movie) {
+  if (movie.playbackMode === 'URDBOX' || movie.contentSource === 'URDBOX') {
+    return { label: 'URDBOX', variant: 'purple' as const };
+  }
+  if (movie.playbackMode === 'EMBED' || movie.contentSource === 'MOVIESAPI') {
+    return { label: 'MOVIESAPI', variant: 'info' as const };
+  }
+  if (movie.source === 'MANUAL') {
+    return { label: 'MANUAL', variant: 'warning' as const };
+  }
+  return { label: movie.source || 'TMDB', variant: 'default' as const };
+}
 
 function getStreamStatus(movie: Movie) {
   if (movie.videoUrl) {
@@ -101,6 +118,12 @@ export function MoviesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-movies'] }),
   });
 
+  const toggleFeaturedMutation = useMutation({
+    mutationFn: ({ id, featured }: { id: string; featured: boolean }) =>
+      api.patch(`/admin/movies/${id}`, { featured }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-movies'] }),
+  });
+
   const rawMovies: Movie[] = data?.data ?? [];
   const total = data?.totalResults ?? rawMovies.length;
   const totalPages = data?.totalPages ?? 1;
@@ -110,6 +133,29 @@ export function MoviesPage() {
     return rawMovies.filter((movie) => {
       if (filter === 'live') return movie.status === 'ACTIVE';
       if (filter === 'draft') return movie.status === 'DRAFT';
+      if (filter === 'featured') return Boolean(movie.featured);
+      if (filter === 'urdubox') {
+        return (
+          movie.contentSource === 'URDBOX' ||
+          movie.playbackMode === 'URDBOX'
+        );
+      }
+      if (filter === 'moviesapi') {
+        return (
+          movie.contentSource === 'MOVIESAPI' ||
+          movie.playbackMode === 'EMBED'
+        );
+      }
+      if (filter === 'tmdb') {
+        return (
+          movie.source === 'TMDB' &&
+          movie.contentSource !== 'URDBOX' &&
+          movie.contentSource !== 'MOVIESAPI' &&
+          movie.playbackMode !== 'URDBOX' &&
+          movie.playbackMode !== 'EMBED'
+        );
+      }
+      if (filter === 'manual') return movie.source === 'MANUAL';
       const stream = getStreamStatus(movie);
       if (filter === 'playable') return stream.playable;
       if (filter === 'no-stream') return !stream.playable;
@@ -121,16 +167,31 @@ export function MoviesPage() {
   const counts = useMemo(() => {
     let live = 0;
     let draft = 0;
+    let featured = 0;
+    let urdubox = 0;
+    let moviesApi = 0;
+    let tmdb = 0;
+    let manual = 0;
     let playable = 0;
     let noStream = 0;
     for (const m of rawMovies) {
       if (m.status === 'ACTIVE') live++;
       if (m.status === 'DRAFT') draft++;
+      if (m.featured) featured++;
+      if (m.contentSource === 'URDBOX' || m.playbackMode === 'URDBOX') {
+        urdubox++;
+      } else if (m.contentSource === 'MOVIESAPI' || m.playbackMode === 'EMBED') {
+        moviesApi++;
+      } else if (m.source === 'MANUAL') {
+        manual++;
+      } else {
+        tmdb++;
+      }
       const s = getStreamStatus(m);
       if (s.playable) playable++;
       else noStream++;
     }
-    return { live, draft, playable, noStream };
+    return { live, draft, featured, urdubox, moviesApi, tmdb, manual, playable, noStream };
   }, [rawMovies]);
 
   return (
@@ -173,57 +234,134 @@ export function MoviesPage() {
 
           {/* Quick Filter Chips */}
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-800/80 pt-3">
-            <span className="text-xs font-medium uppercase tracking-wider text-slate-500 mr-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 mr-1">
               Filter:
             </span>
+
+            {/* All */}
             <button
               onClick={() => setFilter('all')}
               className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                 filter === 'all'
-                  ? 'bg-red-500/20 text-red-300 ring-1 ring-red-500/40'
+                  ? 'bg-red-500/25 text-red-300 ring-1 ring-red-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               All ({rawMovies.length})
             </button>
+
+            {/* Live on Web */}
             <button
               onClick={() => setFilter('live')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
                 filter === 'live'
-                  ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
+                  ? 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
               Live on Web ({counts.live})
             </button>
+
+            {/* Draft */}
             <button
               onClick={() => setFilter('draft')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
                 filter === 'draft'
-                  ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40'
+                  ? 'bg-amber-500/25 text-amber-300 ring-1 ring-amber-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
-              Draft / Hidden ({counts.draft})
+              Draft ({counts.draft})
             </button>
+
+            {/* Featured */}
             <button
-              onClick={() => setFilter('playable')}
+              onClick={() => setFilter('featured')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
-                filter === 'playable'
-                  ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/40'
+                filter === 'featured'
+                  ? 'bg-yellow-500/25 text-yellow-300 ring-1 ring-yellow-500/50 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <span>⭐</span>
+              Featured ({counts.featured})
+            </button>
+
+            <span className="h-4 w-px bg-slate-800 mx-1 hidden sm:inline-block"></span>
+
+            {/* UrduBox */}
+            <button
+              onClick={() => setFilter('urdubox')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'urdubox'
+                  ? 'bg-violet-500/25 text-violet-300 ring-1 ring-violet-500/50 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
+              UrduBox ({counts.urdubox})
+            </button>
+
+            {/* MoviesAPI */}
+            <button
+              onClick={() => setFilter('moviesapi')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'moviesapi'
+                  ? 'bg-sky-500/25 text-sky-300 ring-1 ring-sky-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
+              MoviesAPI ({counts.moviesApi})
+            </button>
+
+            {/* TMDB */}
+            <button
+              onClick={() => setFilter('tmdb')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'tmdb'
+                  ? 'bg-slate-700 text-slate-100 ring-1 ring-slate-500 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              TMDB ({counts.tmdb})
+            </button>
+
+            {/* Manual */}
+            <button
+              onClick={() => setFilter('manual')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'manual'
+                  ? 'bg-orange-500/25 text-orange-300 ring-1 ring-orange-500/50 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              Manual ({counts.manual})
+            </button>
+
+            <span className="h-4 w-px bg-slate-800 mx-1 hidden sm:inline-block"></span>
+
+            {/* Stream Ready */}
+            <button
+              onClick={() => setFilter('playable')}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'playable'
+                  ? 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-500/50 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
               Stream Ready ({counts.playable})
             </button>
+
+            {/* Chal Nahi Rahi */}
             <button
               onClick={() => setFilter('no-stream')}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
                 filter === 'no-stream'
-                  ? 'bg-red-500/20 text-red-300 ring-1 ring-red-500/40'
+                  ? 'bg-red-500/25 text-red-300 ring-1 ring-red-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
@@ -262,6 +400,7 @@ export function MoviesPage() {
                   <th className="px-5 py-3.5 font-semibold">Title & Details</th>
                   <th className="px-5 py-3.5 font-semibold">Website Live Status</th>
                   <th className="px-5 py-3.5 font-semibold">Stream Status</th>
+                  <th className="px-4 py-3.5 font-semibold text-center">Featured</th>
                   <th className="px-5 py-3.5 font-semibold">Upload Date</th>
                   <th className="px-4 py-3.5 font-semibold">Source</th>
                   <th className="px-5 py-3.5 font-semibold text-right">Actions</th>
@@ -274,6 +413,7 @@ export function MoviesPage() {
                   const backdropUrl = getTmdbImageUrl(movie.backdropPath, 'w780');
                   const uploadDateFormatted = formatUploadDate(movie.createdAt || movie.releaseDate);
                   const stream = getStreamStatus(movie);
+                  const effectiveSource = getEffectiveSource(movie);
                   const isLive = movie.status === 'ACTIVE';
 
                   return (
@@ -339,9 +479,6 @@ export function MoviesPage() {
                                 TMDB #{movie.tmdbId}
                               </span>
                             )}
-                            {movie.featured && (
-                              <Badge variant="warning">Featured</Badge>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -399,6 +536,34 @@ export function MoviesPage() {
                         </div>
                       </td>
 
+                      {/* Featured (1-Click Star Toggle) */}
+                      <td className="px-4 py-3.5 whitespace-nowrap text-center">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleFeaturedMutation.mutate({
+                              id: movie.id,
+                              featured: !movie.featured,
+                            })
+                          }
+                          disabled={toggleFeaturedMutation.isPending}
+                          title={
+                            movie.featured
+                              ? 'Click to remove from Featured'
+                              : 'Click to add to Featured'
+                          }
+                          className={`inline-flex items-center justify-center rounded-lg p-1.5 transition ${
+                            movie.featured
+                              ? 'bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/40 hover:bg-yellow-500/25'
+                              : 'text-slate-600 hover:bg-slate-800 hover:text-slate-300'
+                          }`}
+                        >
+                          <span className="text-base leading-none">
+                            {movie.featured ? '★' : '☆'}
+                          </span>
+                        </button>
+                      </td>
+
                       {/* Upload Date (DD-MMM-YYYY format e.g. 10-Sep-2026) */}
                       <td className="px-5 py-3.5 whitespace-nowrap">
                         <div className="flex flex-col">
@@ -418,7 +583,7 @@ export function MoviesPage() {
 
                       {/* Source */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <Badge variant={sourceBadge(movie.source)}>{movie.source}</Badge>
+                        <Badge variant={effectiveSource.variant}>{effectiveSource.label}</Badge>
                       </td>
 
                       {/* Actions */}
@@ -426,10 +591,10 @@ export function MoviesPage() {
                         <div className="flex items-center justify-end gap-2">
                           {/* Open in Website */}
                           <a
-                            href={`http://localhost:3000/movies/${movie.id}`}
+                            href={`https://flowlab.fun/movies/${movie.id}`}
                             target="_blank"
                             rel="noreferrer"
-                            title="Open on website"
+                            title="Open on website (flowlab.fun)"
                             className="inline-flex items-center justify-center rounded-lg border border-slate-700/80 bg-slate-800/80 p-2 text-slate-300 transition hover:border-slate-600 hover:bg-slate-700 hover:text-white"
                           >
                             <IconExternalLink className="h-3.5 w-3.5" />
