@@ -13,6 +13,7 @@ import {
   IconLogout,
   IconMenu,
   IconSync,
+  IconTv,
   IconUsers,
 } from './ui/icons';
 
@@ -27,6 +28,7 @@ const navGroups: { title: string; items: NavItem[] }[] = [
     title: 'Content',
     items: [
       { to: '/movies', label: 'Movies', icon: <IconFilm /> },
+      { to: '/series', label: 'Web Series & Anime', icon: <IconTv /> },
       { to: '/sync', label: 'Content Sync', icon: <IconSync /> },
       { to: '/content/import', label: 'Import Content', icon: <IconImport /> },
     ],
@@ -49,6 +51,7 @@ const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/movies': 'Movies',
   '/movies/new': 'Add Movie',
+  '/series': 'Web Series & Anime',
   '/sync': 'Content Sync',
   '/content/import': 'Import Content',
   '/homepage': 'Homepage',

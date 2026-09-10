@@ -58,6 +58,62 @@ export interface Movie {
   updatedAt?: string;
 }
 
+export interface Episode {
+  id: string;
+  seriesId: string;
+  seasonId: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  title: string;
+  overview?: string | null;
+  stillPath?: string | null;
+  airDate?: string | null;
+  runtime?: number | null;
+  videoUrl?: string | null;
+  videoProvider?: string | null;
+}
+
+export interface Season {
+  id: string;
+  seriesId: string;
+  seasonNumber: number;
+  name?: string | null;
+  overview?: string | null;
+  posterPath?: string | null;
+  episodeCount: number;
+  episodes?: Episode[];
+}
+
+export interface Series {
+  id: string;
+  tmdbId?: number | null;
+  upstreamId?: string | null;
+  title: string;
+  originalTitle?: string | null;
+  overview?: string | null;
+  posterPath?: string | null;
+  backdropPath?: string | null;
+  firstAirDate?: string | null;
+  lastAirDate?: string | null;
+  numberOfSeasons?: number | null;
+  numberOfEpisodes?: number | null;
+  rating?: number | null;
+  voteCount?: number | null;
+  language?: string | null;
+  status: MovieStatus;
+  contentType: 'SERIES' | 'ANIME';
+  contentSource?: string | null;
+  playbackMode?: string | null;
+  seasons?: Season[];
+  episodes?: Episode[];
+  categorySeries?: { category: Category; order?: number }[];
+  genres?: { genre: Genre }[];
+  cast?: MovieCast[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+
 export interface PaginatedResponse<T> {
   data: T[];
   page: number;

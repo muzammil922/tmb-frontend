@@ -13,6 +13,7 @@ import { CategoriesPage } from './pages/CategoriesPage';
 import { UsersPage } from './pages/UsersPage';
 import { SyncPage } from './pages/SyncPage';
 import { ContentImportPage } from './pages/ContentImportPage';
+import { SeriesPage } from './pages/SeriesPage';
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="movies" element={<MoviesPage />} />
             <Route path="movies/new" element={<MovieNewPage />} />
             <Route path="movies/:id/edit" element={<MovieEditPage />} />
+            <Route path="series" element={<SeriesPage />} />
             <Route path="homepage" element={<HomepagePage />} />
             <Route path="banners" element={<BannersPage />} />
             <Route path="categories" element={<CategoriesPage />} />
