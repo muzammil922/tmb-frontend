@@ -202,8 +202,22 @@ export function SyncPage() {
     onError: () => setMessage({ type: 'error', text: 'Failed to save settings.' }),
   });
 
+  type SyncContentType = 'ALL' | 'MOVIES' | 'SERIES';
+  const [syncContentType, setSyncContentType] = useState<SyncContentType>('ALL');
+
+  const resetStalledMutation = useMutation({
+    mutationFn: () => api.post('/admin/sync/reset-stalled'),
+    onSuccess: (res) => {
+      setMessage({ type: 'success', text: res.data?.message || 'Stalled sync jobs reset successfully.' });
+      queryClient.invalidateQueries({ queryKey: ['sync-status'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+    },
+    onError: () => setMessage({ type: 'error', text: 'Failed to reset stalled jobs.' }),
+  });
+
   const runMutation = useMutation({
-    mutationFn: (source: SyncSource) => api.post('/admin/sync/run', { source }),
+    mutationFn: ({ source, contentType }: { source: SyncSource; contentType: SyncContentType }) =>
+      api.post('/admin/sync/run', { source, contentType }),
     onSuccess: (res) => {
       const started = res.data?.started;
       setMessage({
@@ -479,32 +493,69 @@ export function SyncPage() {
       )}
 
       {activeTab === 'run' && (
-        <Card className="max-w-xl">
-          <CardHeader title="Manual Sync" description="Run an immediate sync from enabled sources" />
+        <Card className="max-w-2xl">
+          <CardHeader
+            title="Manual Content Sync"
+            description="Run an immediate sync from enabled upstream sources with granular movie and series filtering"
+          />
+
           {isSyncRunning && (
-            <Alert variant="warning">A sync is already running. You can stop it from the banner above.</Alert>
+            <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-950/40 p-4 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-amber-300">
+                  ⚠️ A sync is already running in the background.
+                </p>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => resetStalledMutation.mutate()}
+                  disabled={resetStalledMutation.isPending}
+                >
+                  {resetStalledMutation.isPending ? 'Resetting...' : '⚡ Unlock / Reset Sync Status'}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-300">
+                Agar sync kisi network drop ya restart ki wajah se stuck ho gaya tha, toh &quot;Unlock / Reset Sync Status&quot; dabayein.
+              </p>
+            </div>
           )}
-          <div className="space-y-4">
+
+          <div className="space-y-5">
             <div>
-              <Label>Source</Label>
+              <Label hint="Chunein ke kis upstream provider se content lena hai">Content Provider (Source)</Label>
               <Select
                 value={runSource}
                 onChange={(e) => setRunSource(e.target.value as SyncSource)}
                 disabled={isSyncRunning}
               >
-                <option value="ALL">All enabled sources</option>
-                <option value="URDBOX">Urdubox only</option>
-                <option value="MOVIESAPI">MoviesAPI only</option>
-                <option value="IMDB3">IMDB3 / MovieBox only</option>
+                <option value="ALL">All enabled sources (UrduBox, MoviesAPI, IMDB3)</option>
+                <option value="URDBOX">Urdubox only (Pakistani, Urdu Dubbed)</option>
+                <option value="MOVIESAPI">MoviesAPI only (Hollywood & International)</option>
+                <option value="IMDB3">IMDB3 / MovieBox only (Direct MP4 Bollywood/Hollywood)</option>
               </Select>
             </div>
-            <div className="flex flex-wrap gap-3">
+
+            <div>
+              <Label hint="Sirf Web Series, sirf Movies, ya dono sync karne hain?">Target Content Type</Label>
+              <Select
+                value={syncContentType}
+                onChange={(e) => setSyncContentType(e.target.value as SyncContentType)}
+                disabled={isSyncRunning}
+              >
+                <option value="ALL">🌟 All Content (Movies + Web Series & Anime)</option>
+                <option value="SERIES">📺 Web Series & Anime Only (Movies skip hongi)</option>
+                <option value="MOVIES">🎬 Movies Only (Web Series skip hongi)</option>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap gap-3 pt-2">
               <Button
                 variant="success"
-                onClick={() => runMutation.mutate(runSource)}
+                onClick={() => runMutation.mutate({ source: runSource, contentType: syncContentType })}
                 disabled={runMutation.isPending || isSyncRunning}
+                className="flex-1 sm:flex-none"
               >
-                {runMutation.isPending ? 'Starting...' : 'Run Sync Now'}
+                {runMutation.isPending ? 'Starting...' : '🚀 Run Sync Now'}
               </Button>
               <Button
                 variant="danger"
@@ -514,6 +565,7 @@ export function SyncPage() {
                 {stopping ? 'Stopping...' : 'Stop Sync'}
               </Button>
             </div>
+
             <Button
               variant="outline"
               onClick={() => stopAutomationMutation.mutate()}
@@ -528,33 +580,113 @@ export function SyncPage() {
 
       {activeTab === 'imdb3' && (
         <div className="space-y-6">
-          <Card>
+          {/* Easy Guide & Explanation Banner */}
+          <Card className="border-red-500/30 bg-gradient-to-r from-red-950/40 via-slate-900 to-slate-900">
             <CardHeader
-              title="🍿 IMDB3 / MovieBox Direct Stream Provider"
-              description="Direct integration with https://api2.imdb3.shop and MovieBox Play Stream engine"
+              title="🍿 IMDB3 / MovieBox Direct Stream Provider — Aasan Tareeqa"
+              description="Bollywood, Indian blockbusters aur Hollywood movies direct high-speed MP4 streaming links ke sath auto-fetch karein"
             />
-            <div className="rounded-xl border border-slate-700/80 bg-slate-900/60 p-4 text-xs text-slate-300 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
-                <span className="font-bold text-white">Upstream API:</span>
-                <span className="font-mono text-slate-300">https://api2.imdb3.shop/api/movie/:id</span>
+            <div className="rounded-xl border border-slate-700/80 bg-slate-900/80 p-4 text-xs text-slate-300 space-y-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-lg bg-slate-800/80 p-3 border border-slate-700/60">
+                  <p className="font-bold text-emerald-400">1. Ye Provider Kya Hai?</p>
+                  <p className="mt-1 text-slate-300">
+                    Yeh engine MovieBox aur IMDB3 API se direct 1080p/720p MP4 download aur playback links, full cast aur poster auto-import karta hai.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-800/80 p-3 border border-slate-700/60">
+                  <p className="font-bold text-sky-400">2. Sab Se Aasan: 1-Click Import</p>
+                  <p className="mt-1 text-slate-300">
+                    Neeche diye gaye popular blockbusters (*Mirzapur*, *Animal*, *Jawan*, *Stree 2*) par bas &quot;⚡ Import Now&quot; dabayein.
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-800/80 p-3 border border-slate-700/60">
+                  <p className="font-bold text-purple-400">3. Nayi Releases Kaise Lein?</p>
+                  <p className="mt-1 text-slate-300">
+                    Har roz sequential IDs barhti hain. Aap Start ID aur Count daal kar aglay 5 se 25 movies ek sath auto-import kar sakte hain.
+                  </p>
+                </div>
               </div>
-              <p className="text-slate-400">
-                Imports Bollywood, Hollywood, Indian blockbusters, full cast members with character roles & avatars, trailer links, and extracts direct high-speed MP4 streaming URLs from MovieBox.
-              </p>
             </div>
           </Card>
+
+          {/* 1-Click Popular Titles Grid */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>⚡ 1-Click Popular Movies Showcase</span>
+                  <span className="rounded-full bg-red-600/20 px-2 py-0.5 text-[10px] font-bold text-red-400 border border-red-500/30">
+                    Direct MP4 Links
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Kisi bhi ID ko dhoondnay ki zaroorat nahi — seedha click kar ke website par live karein:
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { id: '123295', title: 'Mirzapur', year: '2024', genre: 'Crime / Drama', desc: 'Direct MovieBox MP4' },
+                { id: '123294', title: 'Vibe / Stree 2', year: '2024', genre: 'Horror / Comedy', desc: 'High-speed MP4' },
+                { id: '123290', title: 'Animal', year: '2023', genre: 'Action Thriller', desc: 'Ranbir Kapoor Direct' },
+                { id: '123285', title: 'Jawan', year: '2023', genre: 'Action / Masala', desc: 'SRK Blockbuster MP4' },
+                { id: '123280', title: 'Pushpa 2: The Rule', year: '2024', genre: 'Pan-India Action', desc: 'Allu Arjun Hit' },
+                { id: '123275', title: 'Kalki 2898 AD', year: '2024', genre: 'Sci-Fi Epic', desc: 'Prabhas Epic Stream' },
+                { id: '123270', title: 'Fighter', year: '2024', genre: 'Aerial Action', desc: 'Hrithik Roshan Stream' },
+                { id: '123265', title: 'Salaar: Part 1', year: '2023', genre: 'Action Drama', desc: 'Prashanth Neel Stream' },
+              ].map((item) => (
+                <div
+                  key={item.id}
+                  className="group relative flex flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/90 p-3.5 transition hover:border-red-500/50 hover:shadow-lg hover:shadow-red-950/20"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 border border-slate-700">
+                        ID: {item.id}
+                      </span>
+                      <span className="text-[11px] text-amber-400 font-medium">{item.year}</span>
+                    </div>
+                    <h4 className="mt-2 font-bold text-white group-hover:text-red-400 transition line-clamp-1">
+                      {item.title}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 line-clamp-1">{item.genre}</p>
+                    <p className="mt-1 text-[10px] text-emerald-400 flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {item.desc}
+                    </p>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      setImdb3SingleId(item.id);
+                      importImdb3SingleMutation.mutate(item.id);
+                    }}
+                    disabled={importImdb3SingleMutation.isPending}
+                    className="mt-3 w-full text-xs font-semibold"
+                  >
+                    {importImdb3SingleMutation.isPending && imdb3SingleId === item.id
+                      ? 'Importing...'
+                      : '⚡ 1-Click Import'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Single Movie Importer */}
             <Card>
               <CardHeader
-                title="⚡ 1-Click Single Movie Importer"
-                description="Import any specific movie by entering its IMDB3 ID (e.g. 123295 for Mirzapur, 123294 for Vibe)"
+                title="🔍 Custom Movie ID Se Import Karein"
+                description="IMDB3 ki website ya API ka koi bhi numeric ID daal kar movie import karein"
               />
               <div className="space-y-4">
                 <div>
-                  <Label hint="Enter numeric movie ID from api2.imdb3.shop">Movie ID</Label>
+                  <Label hint="api2.imdb3.shop ka numeric ID (Maslan: 123295)">Movie ID</Label>
                   <Input
                     type="text"
                     value={imdb3SingleId}
@@ -568,7 +700,7 @@ export function SyncPage() {
                   disabled={importImdb3SingleMutation.isPending || !imdb3SingleId.trim()}
                   className="w-full"
                 >
-                  {importImdb3SingleMutation.isPending ? 'Importing from IMDB3...' : '⚡ Import Movie Now'}
+                  {importImdb3SingleMutation.isPending ? 'Importing from IMDB3...' : '⚡ Import This Movie'}
                 </Button>
               </div>
             </Card>
@@ -576,13 +708,13 @@ export function SyncPage() {
             {/* Sequential Batch Importer */}
             <Card>
               <CardHeader
-                title="🚀 Sequential Batch Importer"
-                description="Scan and import a series of new sequential movie releases"
+                title="🚀 Nayi Releases Auto Batch Scan"
+                description="Start ID se shuru kar ke aglay X number of movies ek sath auto-scan aur import karein"
               />
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label hint="Starting numeric ID">Start ID</Label>
+                    <Label hint="Kahan se shuru karein">Start ID</Label>
                     <Input
                       type="number"
                       value={imdb3BatchStart}
@@ -590,7 +722,7 @@ export function SyncPage() {
                     />
                   </div>
                   <div>
-                    <Label hint="Number of IDs to scan">Count</Label>
+                    <Label hint="Kitni movies scan karni hain">Count (Max 25)</Label>
                     <Input
                       type="number"
                       min={1}

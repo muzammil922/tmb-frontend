@@ -97,9 +97,45 @@ export function SeriesPage() {
     },
   });
 
+  // Bulk state & mutations
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
+
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ ids, status, all }: { ids?: string[]; status: 'ACTIVE' | 'DRAFT'; all?: boolean }) => {
+      await api.patch('/series/bulk/status', { ids, status, all });
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['series'] });
+      setSelectedIds([]);
+      setBulkNotice(
+        vars.all
+          ? `All series successfully set to ${vars.status}!`
+          : `${vars.ids?.length} series set to ${vars.status}!`
+      );
+      setTimeout(() => setBulkNotice(null), 4000);
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async ({ ids, all }: { ids?: string[]; all?: boolean }) => {
+      await api.delete('/series/bulk/delete', { data: { ids, all } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['series'] });
+      setSelectedIds([]);
+      setBulkNotice('Selected series removed.');
+      setTimeout(() => setBulkNotice(null), 4000);
+    },
+  });
+
   const seriesList: Series[] = seriesData?.data || [];
-  const total = seriesData?.total || 0;
+  const total = seriesData?.totalResults ?? seriesData?.total ?? 0;
   const totalPages = seriesData?.totalPages || 1;
+  const webSeriesCount = seriesData?.webSeriesCount ?? 0;
+  const animeCount = seriesData?.animeCount ?? 0;
+  const activeCount = seriesData?.activeCount ?? 0;
+  const draftCount = seriesData?.draftCount ?? 0;
 
   // Compute selected season episodes
   const activeSeason = useMemo(() => {
@@ -117,7 +153,20 @@ export function SeriesPage() {
         title="Web Series & Anime"
         description="Comprehensive catalog of TV shows, Pakistani/Urdu dramas, and Anime series with season and episode streaming management."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="success"
+              onClick={() => {
+                if (window.confirm(`Kya aap waqai saari (${total}) series ko ek sath Live (Active) karna chahte hain?`)) {
+                  bulkStatusMutation.mutate({ all: true, status: 'ACTIVE' });
+                }
+              }}
+              disabled={bulkStatusMutation.isPending || total === 0}
+              className="flex items-center gap-1.5 shadow-sm shadow-emerald-950"
+            >
+              <span>⚡</span>
+              <span>{bulkStatusMutation.isPending ? 'Activating All...' : `Activate All (${total})`}</span>
+            </Button>
             <Link to="/sync">
               <Button variant="secondary" className="flex items-center gap-2">
                 <IconSync className="h-4 w-4" />
@@ -128,27 +177,40 @@ export function SeriesPage() {
         }
       />
 
+      {bulkNotice && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-3 text-sm text-emerald-300">
+          ✅ {bulkNotice}
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="p-4 bg-slate-900/60 border-slate-800">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Total Series</p>
           <p className="mt-1 text-2xl font-bold text-white">{total}</p>
+          <p className="mt-1 text-[11px] text-slate-400">
+            <span className="text-emerald-400 font-semibold">{activeCount} Live</span> •{' '}
+            <span className="text-amber-400 font-semibold">{draftCount} Draft</span>
+          </p>
         </Card>
         <Card className="p-4 bg-slate-900/60 border-slate-800">
           <p className="text-xs font-medium uppercase tracking-wider text-emerald-400">Web Series</p>
           <p className="mt-1 text-2xl font-bold text-emerald-400">
-            {typeFilter === 'SERIES' ? total : 'Live Catalog'}
+            {webSeriesCount}
           </p>
+          <p className="mt-1 text-[11px] text-slate-400">TV Shows & Dramas</p>
         </Card>
         <Card className="p-4 bg-slate-900/60 border-slate-800">
           <p className="text-xs font-medium uppercase tracking-wider text-purple-400">Anime Shows</p>
           <p className="mt-1 text-2xl font-bold text-purple-400">
-            {typeFilter === 'ANIME' ? total : 'Supported'}
+            {animeCount}
           </p>
+          <p className="mt-1 text-[11px] text-slate-400">Japanese Animation</p>
         </Card>
         <Card className="p-4 bg-slate-900/60 border-slate-800">
           <p className="text-xs font-medium uppercase tracking-wider text-sky-400">Episode Playback</p>
           <p className="mt-1 text-2xl font-bold text-sky-400">Multi-Server</p>
+          <p className="mt-1 text-[11px] text-slate-400">UrduBox • MoviesAPI • MP4</p>
         </Card>
       </div>
 
@@ -269,9 +331,80 @@ export function SeriesPage() {
               <option value="live">Live (Active)</option>
               <option value="draft">Draft (Inactive)</option>
             </select>
+
+            {/* Select page toggle */}
+            {seriesList.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedIds.length === seriesList.length) {
+                    setSelectedIds([]);
+                  } else {
+                    setSelectedIds(seriesList.map((s) => s.id));
+                  }
+                }}
+                className="rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition flex items-center gap-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.length === seriesList.length && seriesList.length > 0}
+                  onChange={() => {}}
+                  className="h-3.5 w-3.5 rounded border-slate-600 bg-slate-700 text-red-600 pointer-events-none"
+                />
+                <span>Select Page ({seriesList.length})</span>
+              </button>
+            )}
           </div>
         </div>
       </Card>
+
+      {/* Bulk Action Toolbar */}
+      {selectedIds.length > 0 && (
+        <Card className="p-3 bg-red-950/40 border-red-500/40 flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2 text-sm text-white">
+            <span className="rounded bg-red-600 px-2.5 py-0.5 text-xs font-bold">{selectedIds.length}</span>
+            <span className="font-semibold">Series Selected</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="success"
+              onClick={() => bulkStatusMutation.mutate({ ids: selectedIds, status: 'ACTIVE' })}
+              disabled={bulkStatusMutation.isPending}
+            >
+              🟢 Set Active ({selectedIds.length})
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => bulkStatusMutation.mutate({ ids: selectedIds, status: 'DRAFT' })}
+              disabled={bulkStatusMutation.isPending}
+            >
+              🟡 Set Draft ({selectedIds.length})
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                if (window.confirm(`Kya aap waqai ${selectedIds.length} selected series ko delete karna chahte hain?`)) {
+                  bulkDeleteMutation.mutate({ ids: selectedIds });
+                }
+              }}
+              disabled={bulkDeleteMutation.isPending}
+            >
+              🗑️ Delete Selected
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedIds([])}
+            >
+              Deselect All
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Series Grid */}
       {isLoading ? (
@@ -296,7 +429,9 @@ export function SeriesPage() {
             return (
               <Card
                 key={item.id}
-                className="group relative flex flex-col overflow-hidden border-slate-800 bg-slate-900/80 transition hover:border-slate-700 hover:shadow-xl hover:shadow-red-950/20"
+                className={`group relative flex flex-col overflow-hidden border bg-slate-900/80 transition hover:shadow-xl hover:shadow-red-950/20 ${
+                  selectedIds.includes(item.id) ? 'border-red-500 ring-1 ring-red-500' : 'border-slate-800 hover:border-slate-700'
+                }`}
               >
                 {/* Poster & Badges Header */}
                 <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-950">
@@ -315,8 +450,25 @@ export function SeriesPage() {
 
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
 
+                  {/* Selection Checkbox */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute left-2.5 top-2.5 z-20 rounded bg-slate-950/80 p-1 backdrop-blur-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => {
+                        setSelectedIds((prev) =>
+                          prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id]
+                        );
+                      }}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </div>
+
                   {/* Top Badges */}
-                  <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+                  <div className="absolute left-10 top-3 flex flex-wrap gap-1.5">
                     <Badge variant={isAnime ? 'purple' : 'info'}>
                       {isAnime ? '⛩️ Anime' : '📺 Series'}
                     </Badge>
@@ -391,14 +543,14 @@ export function SeriesPage() {
                           status: item.status === 'ACTIVE' ? 'DRAFT' : 'ACTIVE',
                         })
                       }
-                      title={item.status === 'ACTIVE' ? 'Set as Draft' : 'Set as Active'}
-                      className={`rounded-lg px-2.5 py-1.5 text-xs font-medium border transition ${
+                      title={item.status === 'ACTIVE' ? 'Click to Set as Draft' : 'Click to Make Live'}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold border transition ${
                         item.status === 'ACTIVE'
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                          : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'
+                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 shadow-sm shadow-emerald-950/50'
+                          : 'border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
                       }`}
                     >
-                      {item.status === 'ACTIVE' ? 'Live' : 'Draft'}
+                      {item.status === 'ACTIVE' ? '🟢 Live' : '🟡 Draft'}
                     </button>
 
                     <button
