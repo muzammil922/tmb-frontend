@@ -126,9 +126,24 @@ function jobStatusVariant(status: string) {
   return 'default';
 }
 
+const DEFAULT_SYNC_SETTINGS: SyncSettings = {
+  urduboxEnabled: false,
+  moviesApiEnabled: false,
+  imdb3Enabled: true,
+  automationEnabled: false,
+  syncIntervalHours: 24,
+  lastScheduledSyncAt: null,
+  lastImdb3Id: 123290,
+  scheduleStart: null,
+  scheduleEnd: null,
+  cronExpression: null,
+  maxPagesPerRun: 10,
+  resultsPerPage: 50,
+};
+
 export function SyncPage() {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<SyncSettings | null>(null);
+  const [form, setForm] = useState<SyncSettings>(DEFAULT_SYNC_SETTINGS);
   const [runSource, setRunSource] = useState<SyncSource>('ALL');
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -171,11 +186,12 @@ export function SyncPage() {
       const { data } = await api.get<SyncSettings>('/admin/sync/settings');
       return data;
     },
+    retry: 1,
   });
 
   useEffect(() => {
-    if (settings && !form) setForm(settings);
-  }, [settings, form]);
+    if (settings) setForm(settings);
+  }, [settings]);
 
   const saveMutation = useMutation({
     mutationFn: (data: SyncSettings) => api.put('/admin/sync/settings', data),
@@ -246,7 +262,7 @@ export function SyncPage() {
     },
   });
 
-  if (isLoading || !form) return <LoadingState label="Loading sync settings..." />;
+  if (isLoading && !settings && !form) return <LoadingState label="Loading sync settings..." />;
 
   const runningJobs = jobsData?.data?.filter((job) => job.status === 'RUNNING') ?? [];
   const isSyncRunning = Boolean(syncStatus?.running || runningJobs.length > 0);
