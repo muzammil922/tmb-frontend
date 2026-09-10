@@ -13,13 +13,17 @@ import { Input, Label, Select } from '../components/ui/Input';
 import { LoadingState } from '../components/ui/EmptyState';
 import { IconStop } from '../components/ui/icons';
 
-type SyncSource = 'ALL' | 'URDBOX' | 'MOVIESAPI';
-type SyncTab = 'settings' | 'run' | 'browser' | 'jobs';
+type SyncSource = 'ALL' | 'URDBOX' | 'MOVIESAPI' | 'IMDB3';
+type SyncTab = 'settings' | 'run' | 'imdb3' | 'browser' | 'jobs';
 
 interface SyncSettings {
   urduboxEnabled: boolean;
   moviesApiEnabled: boolean;
+  imdb3Enabled: boolean;
   automationEnabled: boolean;
+  syncIntervalHours: number;
+  lastScheduledSyncAt: string | null;
+  lastImdb3Id: number;
   scheduleStart: string | null;
   scheduleEnd: string | null;
   cronExpression: string | null;
@@ -32,6 +36,15 @@ interface SyncStatus {
   cancelRequested: boolean;
   activeJobId: string | null;
   runningJobs?: SyncJob[];
+  automation?: {
+    enabled: boolean;
+    syncIntervalHours: number;
+    lastScheduledSyncAt: string | null;
+    nextSyncRemainingMinutes: number | null;
+    urduboxEnabled: boolean;
+    moviesApiEnabled: boolean;
+    imdb3Enabled: boolean;
+  };
 }
 
 interface SyncJob {
@@ -120,6 +133,37 @@ export function SyncPage() {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<SyncTab>('settings');
+  const [imdb3SingleId, setImdb3SingleId] = useState('123295');
+  const [imdb3BatchStart, setImdb3BatchStart] = useState('123290');
+  const [imdb3BatchCount, setImdb3BatchCount] = useState('5');
+  const [imdb3Result, setImdb3Result] = useState<any>(null);
+
+  const importImdb3SingleMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/admin/sync/imdb3/import/${id}`),
+    onSuccess: (res) => {
+      setImdb3Result(res.data);
+      queryClient.invalidateQueries({ queryKey: ['admin-movies'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+      setMessage({ type: 'success', text: res.data?.message || 'Movie imported successfully.' });
+    },
+    onError: (err: any) => {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'IMDB3 import failed.' });
+    },
+  });
+
+  const importImdb3BatchMutation = useMutation({
+    mutationFn: ({ startId, count }: { startId: number; count: number }) =>
+      api.post('/admin/sync/imdb3/batch', { startId, count }),
+    onSuccess: (res) => {
+      setImdb3Result(res.data);
+      queryClient.invalidateQueries({ queryKey: ['admin-movies'] });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+      setMessage({ type: 'success', text: `Batch processed (${res.data?.length} movies checked).` });
+    },
+    onError: (err: any) => {
+      setMessage({ type: 'error', text: err?.response?.data?.message || 'Batch import failed.' });
+    },
+  });
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['sync-settings'],
@@ -210,8 +254,9 @@ export function SyncPage() {
   const jobCount = jobsData?.data?.length ?? 0;
 
   const tabs = [
-    { id: 'settings', label: 'Settings' },
+    { id: 'settings', label: 'Settings & Automation' },
     { id: 'run', label: 'Run Sync', badge: isSyncRunning ? '●' : undefined },
+    { id: 'imdb3', label: 'IMDB3 / MovieBox' },
     { id: 'browser', label: 'Browser Sync' },
     { id: 'jobs', label: 'Job History', badge: jobCount || undefined },
   ];
@@ -247,33 +292,110 @@ export function SyncPage() {
 
       {activeTab === 'settings' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader title="Sources" description="Enable or disable content providers" />
-            <div className="space-y-3">
-              <Switch
-                label="Urdubox"
-                description="Import movies and series from Urdubox"
-                checked={form.urduboxEnabled}
-                onChange={(v) => setForm({ ...form, urduboxEnabled: v })}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader title="Content Providers" description="Enable or disable upstream content sources" />
+              <div className="space-y-4">
+                <Switch
+                  label="Urdubox"
+                  description="Import Pakistani, Urdu dubbed movies & series (urdubox.pk)"
+                  checked={form.urduboxEnabled}
+                  onChange={(v) => setForm({ ...form, urduboxEnabled: v })}
+                />
+                <Switch
+                  label="MoviesAPI"
+                  description="Import Hollywood & global titles with embed player (moviesapi.to)"
+                  checked={form.moviesApiEnabled}
+                  onChange={(v) => setForm({ ...form, moviesApiEnabled: v })}
+                />
+                <Switch
+                  label="IMDB3 / MovieBox"
+                  description="Import Bollywood & Hollywood titles with direct MP4 streams (api2.imdb3.shop)"
+                  checked={form.imdb3Enabled}
+                  onChange={(v) => setForm({ ...form, imdb3Enabled: v })}
+                />
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader
+                title="Automated Recurring Sync Engine"
+                description="Background cron automatically checks providers for new titles and imports them"
               />
-              <Switch
-                label="MoviesAPI"
-                description="Import movies and series from MoviesAPI"
-                checked={form.moviesApiEnabled}
-                onChange={(v) => setForm({ ...form, moviesApiEnabled: v })}
-              />
-              <Switch
-                label="Automation"
-                description="Run scheduled sync hourly within schedule window"
-                checked={form.automationEnabled}
-                onChange={(v) => setForm({ ...form, automationEnabled: v })}
-              />
-            </div>
-          </Card>
+              <div className="space-y-4">
+                <Switch
+                  label="Automatic Background Sync"
+                  description="Automatically run scheduled sync across all enabled providers"
+                  checked={form.automationEnabled}
+                  onChange={(v) => setForm({ ...form, automationEnabled: v })}
+                />
+
+                <div>
+                  <Label hint="How frequently the background automation checks for new content">
+                    Sync Frequency (Interval)
+                  </Label>
+                  <Select
+                    value={String(form.syncIntervalHours || 24)}
+                    onChange={(e) => setForm({ ...form, syncIntervalHours: Number(e.target.value) })}
+                  >
+                    <option value="24">Every 1 Day (24 Hours) — Recommended</option>
+                    <option value="48">Every 2 Days (48 Hours)</option>
+                    <option value="12">Every 12 Hours</option>
+                    <option value="6">Every 6 Hours</option>
+                    <option value="1">Every 1 Hour (Fast Testing)</option>
+                  </Select>
+                </div>
+
+                {/* Automation Telemetry & Countdown Widget */}
+                <div className="rounded-xl border border-slate-700/80 bg-slate-900/70 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Automation Status
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                        form.automationEnabled
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-slate-700 text-slate-400'
+                      }`}
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${form.automationEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                      {form.automationEnabled ? 'Active' : 'Disabled'}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-300 space-y-1 pt-1 border-t border-slate-800">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Last Automated Sync:</span>
+                      <span className="font-medium text-slate-200">
+                        {form.lastScheduledSyncAt
+                          ? new Date(form.lastScheduledSyncAt).toLocaleString()
+                          : 'Never run yet'}
+                      </span>
+                    </div>
+
+                    {form.automationEnabled && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Next Scheduled Check:</span>
+                        <span className="font-semibold text-amber-300">
+                          {syncStatus?.automation?.nextSyncRemainingMinutes !== undefined &&
+                          syncStatus.automation.nextSyncRemainingMinutes !== null
+                            ? syncStatus.automation.nextSyncRemainingMinutes === 0
+                              ? '⚡ Due now (executes on next tick)'
+                              : `In ~${Math.floor(syncStatus.automation.nextSyncRemainingMinutes / 60)}h ${syncStatus.automation.nextSyncRemainingMinutes % 60}m`
+                            : `Every ${form.syncIntervalHours || 24} hours`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
 
           <div className="space-y-6">
             <Card>
-              <CardHeader title="Schedule Window" description="Leave empty for 24/7 automation" />
+              <CardHeader title="Schedule Window (Optional)" description="Restricts automation to specific hours, or leave empty for 24/7" />
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Start time</Label>
@@ -295,26 +417,39 @@ export function SyncPage() {
             </Card>
 
             <Card>
-              <CardHeader title="Sync Limits" description="Pages and items per sync run" />
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label hint="Max pages to fetch">Max pages</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={form.maxPagesPerRun}
-                    onChange={(e) => setForm({ ...form, maxPagesPerRun: Number(e.target.value) })}
-                  />
+              <CardHeader title="Sync Limits & Checkpoints" description="Control pagination depth and sequential scan pointer" />
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label hint="Max pages to fetch">Max pages</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={form.maxPagesPerRun}
+                      onChange={(e) => setForm({ ...form, maxPagesPerRun: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label hint="Items per page">Per page</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={form.resultsPerPage}
+                      onChange={(e) => setForm({ ...form, resultsPerPage: Number(e.target.value) })}
+                    />
+                  </div>
                 </div>
+
                 <div>
-                  <Label hint="Items per page">Per page</Label>
+                  <Label hint="Tracks latest scanned sequential movie ID from IMDB3 / MovieBox">
+                    IMDB3 Checkpoint Start ID
+                  </Label>
                   <Input
                     type="number"
-                    min={1}
-                    max={100}
-                    value={form.resultsPerPage}
-                    onChange={(e) => setForm({ ...form, resultsPerPage: Number(e.target.value) })}
+                    value={form.lastImdb3Id || 123290}
+                    onChange={(e) => setForm({ ...form, lastImdb3Id: Number(e.target.value) })}
                   />
                 </div>
               </div>
@@ -344,6 +479,7 @@ export function SyncPage() {
                 <option value="ALL">All enabled sources</option>
                 <option value="URDBOX">Urdubox only</option>
                 <option value="MOVIESAPI">MoviesAPI only</option>
+                <option value="IMDB3">IMDB3 / MovieBox only</option>
               </Select>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -372,6 +508,109 @@ export function SyncPage() {
             </Button>
           </div>
         </Card>
+      )}
+
+      {activeTab === 'imdb3' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader
+              title="🍿 IMDB3 / MovieBox Direct Stream Provider"
+              description="Direct integration with https://api2.imdb3.shop and MovieBox Play Stream engine"
+            />
+            <div className="rounded-xl border border-slate-700/80 bg-slate-900/60 p-4 text-xs text-slate-300 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+                <span className="font-bold text-white">Upstream API:</span>
+                <span className="font-mono text-slate-300">https://api2.imdb3.shop/api/movie/:id</span>
+              </div>
+              <p className="text-slate-400">
+                Imports Bollywood, Hollywood, Indian blockbusters, full cast members with character roles & avatars, trailer links, and extracts direct high-speed MP4 streaming URLs from MovieBox.
+              </p>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Single Movie Importer */}
+            <Card>
+              <CardHeader
+                title="⚡ 1-Click Single Movie Importer"
+                description="Import any specific movie by entering its IMDB3 ID (e.g. 123295 for Mirzapur, 123294 for Vibe)"
+              />
+              <div className="space-y-4">
+                <div>
+                  <Label hint="Enter numeric movie ID from api2.imdb3.shop">Movie ID</Label>
+                  <Input
+                    type="text"
+                    value={imdb3SingleId}
+                    onChange={(e) => setImdb3SingleId(e.target.value)}
+                    placeholder="e.g. 123295"
+                  />
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={() => importImdb3SingleMutation.mutate(imdb3SingleId)}
+                  disabled={importImdb3SingleMutation.isPending || !imdb3SingleId.trim()}
+                  className="w-full"
+                >
+                  {importImdb3SingleMutation.isPending ? 'Importing from IMDB3...' : '⚡ Import Movie Now'}
+                </Button>
+              </div>
+            </Card>
+
+            {/* Sequential Batch Importer */}
+            <Card>
+              <CardHeader
+                title="🚀 Sequential Batch Importer"
+                description="Scan and import a series of new sequential movie releases"
+              />
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label hint="Starting numeric ID">Start ID</Label>
+                    <Input
+                      type="number"
+                      value={imdb3BatchStart}
+                      onChange={(e) => setImdb3BatchStart(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label hint="Number of IDs to scan">Count</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={imdb3BatchCount}
+                      onChange={(e) => setImdb3BatchCount(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="success"
+                  onClick={() =>
+                    importImdb3BatchMutation.mutate({
+                      startId: Number(imdb3BatchStart),
+                      count: Number(imdb3BatchCount),
+                    })
+                  }
+                  disabled={importImdb3BatchMutation.isPending}
+                  className="w-full"
+                >
+                  {importImdb3BatchMutation.isPending ? 'Scanning Batch...' : '🚀 Scan & Import Batch Range'}
+                </Button>
+              </div>
+            </Card>
+          </div>
+
+          {/* Latest IMDB3 Result Inspector */}
+          {imdb3Result && (
+            <Card>
+              <CardHeader title="Latest Import Result" description="Status and stream payload for recently processed movie" />
+              <div className="rounded-xl border border-slate-700/80 bg-slate-900/90 p-4 font-mono text-xs text-slate-200 overflow-x-auto max-h-80">
+                <pre>{JSON.stringify(imdb3Result, null, 2)}</pre>
+              </div>
+            </Card>
+          )}
+        </div>
       )}
 
       {activeTab === 'browser' && (
