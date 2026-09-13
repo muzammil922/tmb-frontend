@@ -13,6 +13,14 @@ import { IconFilm, IconSync, IconTv } from '../components/ui/icons';
 
 type SyncTab = 'movies' | 'series' | 'anime' | 'all';
 type ContentType = 'MOVIES' | 'SERIES' | 'ALL';
+type RepairContentType = 'MOVIES' | 'SERIES' | 'ANIME' | 'ALL';
+
+const REPAIR_CONTENT_TYPE: Record<SyncTab, RepairContentType> = {
+  movies: 'MOVIES',
+  series: 'SERIES',
+  anime: 'ANIME',
+  all: 'ALL',
+};
 
 const PLATFORM_PRESETS = [
   { id: 'trending', label: 'Trending' },
@@ -107,10 +115,23 @@ export function AutomationPage() {
   const selectedPresets = presetSelections[activeTab];
   const visiblePresets = PLATFORM_PRESETS.filter((p) => tab.allowedPresets.includes(p.id));
 
+  const repairType = REPAIR_CONTENT_TYPE[activeTab];
+
   const { data: stats, isLoading } = useQuery({
     queryKey: ['automation-stats'],
     queryFn: async () => {
       const { data } = await api.get<AutomationStats>('/admin/automation/stats');
+      return data;
+    },
+    refetchInterval: activeJobId ? 5000 : 30000,
+  });
+
+  const { data: repairCount } = useQuery({
+    queryKey: ['repair-count', repairType],
+    queryFn: async () => {
+      const { data } = await api.get<{ total: number; movies: number; series: number }>(
+        `/admin/automation/repair-count?contentType=${repairType}`,
+      );
       return data;
     },
     refetchInterval: activeJobId ? 5000 : 30000,
@@ -154,6 +175,24 @@ export function AutomationPage() {
       queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
     },
     onError: () => setMessage({ type: 'error', text: 'Failed to start sync.' }),
+  });
+
+  const repairMutation = useMutation({
+    mutationFn: (contentType: RepairContentType) =>
+      api.post('/admin/automation/repair-broken', { contentType }),
+    onSuccess: (res) => {
+      const jobId = res.data?.jobId;
+      if (jobId) setActiveJobId(jobId);
+      setMessage({
+        type: res.data?.started ? 'success' : 'error',
+        text: res.data?.started
+          ? `Fix Broken started — ${res.data.total} items (sirf broken/pending).`
+          : res.data?.message || 'Could not start repair.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-count'] });
+    },
+    onError: () => setMessage({ type: 'error', text: 'Failed to start repair.' }),
   });
 
   const togglePreset = (id: string) => {
@@ -211,6 +250,38 @@ export function AutomationPage() {
           setMessage(null);
         }}
       />
+
+      <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+        <CardHeader
+          title="Fix Broken Only"
+          description="Sirf broken/pending content fix hoti hai — working movies skip. TMDB search + MoviesAPI embed try karta hai."
+        />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-slate-300">
+            <span className="font-semibold text-amber-300">{repairCount?.total ?? '—'}</span> items repair ke liye
+            {repairCount && repairCount.total > 0 && (
+              <span className="text-slate-500">
+                {' '}
+                ({repairCount.movies} movies{repairCount.series ? `, ${repairCount.series} series` : ''})
+              </span>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            icon={<IconSync className="h-4 w-4" />}
+            onClick={() => repairMutation.mutate(repairType)}
+            disabled={repairMutation.isPending || isRunning || !repairCount?.total}
+            className="border-amber-500/50 text-amber-200 hover:bg-amber-500/10"
+          >
+            {repairMutation.isPending || isRunning ? 'Repairing...' : `Fix Broken ${tab.label}`}
+          </Button>
+        </div>
+        {isRunning && job && (
+          <p className="mt-3 text-xs text-amber-200/80">
+            Fixed {job.imported} · Still broken {job.skipped} · Failed {job.failed}
+          </p>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>

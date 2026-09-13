@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
@@ -16,7 +16,9 @@ import {
   IconExternalLink,
   IconChevron,
   IconChevronLeft,
+  IconSync,
 } from '../components/ui/icons';
+import { Alert } from '../components/ui/Alert';
 import { getTmdbImageUrl, formatUploadDate, type Movie } from '../lib/shared';
 
 type FilterType =
@@ -180,6 +182,8 @@ export function MoviesPage() {
   } | null>(null);
 
   const queryClient = useQueryClient();
+  const [repairMessage, setRepairMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [repairJobId, setRepairJobId] = useState<string | null>(null);
 
   const serverPlayback = toServerPlaybackFilter(filter);
 
@@ -192,6 +196,49 @@ export function MoviesPage() {
       return data;
     },
   });
+
+  const { data: repairCount } = useQuery({
+    queryKey: ['repair-count', 'MOVIES'],
+    queryFn: async () => {
+      const { data } = await api.get<{ total: number }>('/admin/automation/repair-count?contentType=MOVIES');
+      return data;
+    },
+    refetchInterval: repairJobId ? 5000 : 30000,
+  });
+
+  const { data: repairJob } = useQuery({
+    queryKey: ['sync-job', repairJobId],
+    queryFn: async () => {
+      const { data } = await api.get(`/admin/sync/jobs/${repairJobId}`);
+      return data;
+    },
+    enabled: Boolean(repairJobId),
+    refetchInterval: (q) => (q.state.data?.status === 'RUNNING' ? 3000 : false),
+  });
+
+  const repairMutation = useMutation({
+    mutationFn: () => api.post('/admin/automation/repair-broken', { contentType: 'MOVIES' }),
+    onSuccess: (res) => {
+      if (res.data?.jobId) setRepairJobId(res.data.jobId);
+      setRepairMessage({
+        type: res.data?.started ? 'success' : 'error',
+        text: res.data?.started
+          ? `Fix Broken started — ${res.data.total} movies (sirf broken/pending).`
+          : res.data?.message || 'Repair start nahi ho saki.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['admin-movies'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-count'] });
+    },
+    onError: () => setRepairMessage({ type: 'error', text: 'Repair start nahi ho saki.' }),
+  });
+
+  useEffect(() => {
+    if (repairJob && repairJob.status !== 'RUNNING') {
+      queryClient.invalidateQueries({ queryKey: ['admin-movies'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-count'] });
+      queryClient.invalidateQueries({ queryKey: ['automation-stats'] });
+    }
+  }, [repairJob?.status, queryClient]);
 
   const playbackStats = data?.stats ?? {
     workingCount: 0,
@@ -358,22 +405,40 @@ export function MoviesPage() {
         </button>
       </div>
 
+      {repairMessage && (
+        <Alert variant={repairMessage.type === 'success' ? 'success' : 'error'}>{repairMessage.text}</Alert>
+      )}
+
       {(filter === 'broken' || filter === 'no-stream') && (
         <Card className="mb-6 border-red-500/20 bg-red-950/20">
           <div className="space-y-2 text-sm text-slate-300">
             <p className="font-semibold text-red-300">Broken movies ka kya karein?</p>
-            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-400">
-              <li><strong className="text-slate-300">TMDB ID missing</strong> → Import Content se TMDB ID se dubara import karo</li>
-              <li><strong className="text-slate-300">MoviesAPI embed fail</strong> → Automation → Sync Everything, ya Content Library → Delete all broken</li>
-              <li><strong className="text-slate-300">IMDB3 link dead</strong> → Sync Settings → Daily auto ON, ya IMDB3 tab se manual import</li>
-              <li><strong className="text-slate-300">Manual metadata only</strong> → Sirf poster/title hai, stream nahi — re-import zaroori</li>
-            </ul>
+            <p className="text-xs text-slate-400">
+              <strong className="text-amber-300">Fix Broken Only</strong> sirf broken/pending movies par kaam karta hai —
+              working skip. TMDB search + MoviesAPI embed try karta hai.
+            </p>
+            {repairJob?.status === 'RUNNING' && (
+              <p className="text-xs text-amber-300">
+                Repairing... Fixed {repairJob.imported} · Still broken {repairJob.skipped} · Failed {repairJob.failed}
+              </p>
+            )}
             <div className="flex flex-wrap gap-2 pt-2">
-              <Button size="sm" variant="outline" onClick={() => navigate('/content/library')}>
-                Content Library → Recheck / Delete
+              <Button
+                size="sm"
+                variant="success"
+                icon={<IconSync className="h-4 w-4" />}
+                onClick={() => repairMutation.mutate()}
+                disabled={repairMutation.isPending || repairJob?.status === 'RUNNING' || !repairCount?.total}
+              >
+                {repairMutation.isPending || repairJob?.status === 'RUNNING'
+                  ? 'Fixing...'
+                  : `Fix Broken Only (${repairCount?.total ?? playbackStats.notWorkingCount + playbackStats.pendingCount})`}
               </Button>
-              <Button size="sm" variant="success" onClick={() => navigate('/automation')}>
-                Automation Sync
+              <Button size="sm" variant="outline" onClick={() => navigate('/content/library')}>
+                Content Library → Delete broken
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate('/automation')}>
+                New content sync
               </Button>
             </div>
           </div>
