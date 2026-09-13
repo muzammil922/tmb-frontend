@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -24,17 +24,24 @@ type FilterType =
   | 'live'
   | 'draft'
   | 'featured'
-  | 'urdubox'
   | 'moviesapi'
   | 'tmdb'
   | 'manual'
+  | 'working'
+  | 'broken'
+  | 'pending'
   | 'playable'
   | 'no-stream';
 
+type PlaybackInfo = {
+  playable: boolean;
+  label: string;
+  variant: 'success' | 'danger' | 'warning' | 'info' | 'default';
+  reason: string;
+  fix: string;
+};
+
 function getEffectiveSource(movie: Movie) {
-  if (movie.playbackMode === 'URDBOX' || movie.contentSource === 'URDBOX') {
-    return { label: 'URDBOX', variant: 'purple' as const };
-  }
   if (movie.playbackMode === 'EMBED' || movie.contentSource === 'MOVIESAPI') {
     return { label: 'MOVIESAPI', variant: 'info' as const };
   }
@@ -44,49 +51,123 @@ function getEffectiveSource(movie: Movie) {
   return { label: movie.source || 'TMDB', variant: 'default' as const };
 }
 
-function getStreamStatus(movie: Movie) {
+function getPlaybackInfo(movie: Movie): PlaybackInfo {
+  if (movie.playbackStatus === 'WORKING') {
+    const via = movie.videoUrl
+      ? 'Direct MP4/HLS'
+      : movie.contentSource === 'IMDB3'
+      ? 'IMDB3 / MovieBox'
+      : movie.contentSource === 'MOVIESAPI'
+      ? 'MoviesAPI Embed'
+      : 'Multi-server embed';
+    return {
+      playable: true,
+      label: 'Chal Rahi Hai',
+      variant: 'success',
+      reason: `Verified working — ${via}`,
+      fix: '',
+    };
+  }
+
+  if (movie.playbackStatus === 'BROKEN') {
+    const { reason, fix } = getBrokenReasonAndFix(movie);
+    return { playable: false, label: 'Broken', variant: 'danger', reason, fix };
+  }
+
+  if (movie.playbackStatus === 'PENDING') {
+    return {
+      playable: false,
+      label: 'Pending',
+      variant: 'warning',
+      reason: 'Abhi playback verify nahi hui',
+      fix: 'Automation sync chalao ya Content Library → Recheck',
+    };
+  }
+
   if (movie.videoUrl) {
     const isHls = movie.videoUrl.includes('.m3u8');
     return {
       playable: true,
       label: isHls ? 'HLS Direct' : 'Direct Video',
-      variant: 'success' as const,
-      detail: 'Direct video/HLS attached',
+      variant: 'success',
+      reason: 'Direct video link attached (not yet verified)',
+      fix: '',
     };
   }
-  if (movie.playbackMode === 'URDBOX' || movie.contentSource === 'URDBOX') {
+
+  if (!movie.tmdbId && movie.source === 'MANUAL') {
     return {
-      playable: true,
-      label: 'UrduBox HLS',
-      variant: 'purple' as const,
-      detail: 'UrduBox fast stream connected',
+      playable: false,
+      label: 'No Stream',
+      variant: 'danger',
+      reason: 'Sirf metadata hai — TMDB ID aur stream source missing',
+      fix: 'Import Content se TMDB ID se import karo (MoviesAPI/IMDB3)',
     };
   }
+
+  if (!movie.tmdbId) {
+    return {
+      playable: false,
+      label: 'No Stream',
+      variant: 'danger',
+      reason: 'TMDB ID missing — player embed nahi mil sakta',
+      fix: 'Content → Import se sahi TMDB ID se dubara import karo',
+    };
+  }
+
   if (movie.playbackMode === 'EMBED' || movie.contentSource === 'MOVIESAPI') {
     return {
-      playable: true,
-      label: 'MoviesAPI',
-      variant: 'info' as const,
-      detail: 'MoviesAPI cloud embed player',
+      playable: false,
+      label: 'Unverified',
+      variant: 'warning',
+      reason: 'MoviesAPI embed set hai lekin verify pending',
+      fix: 'Content Library → Recheck broken, ya Automation sync chalao',
     };
   }
-  if (movie.tmdbId) {
-    return {
-      playable: true,
-      label: 'Cloud Embed',
-      variant: 'success' as const,
-      detail: 'Multi-Server Cloud Stream (AutoEmbed / Smashy)',
-    };
-  }
+
   return {
     playable: false,
     label: 'No Stream',
-    variant: 'danger' as const,
-    detail: 'Website par chal nahi rahi (No stream link or TMDB ID)',
+    variant: 'danger',
+    reason: 'Koi working stream source connect nahi',
+    fix: 'IMDB3 import karo (Bollywood) ya Automation → Sync Everything',
   };
 }
 
+function getBrokenReasonAndFix(movie: Movie): { reason: string; fix: string } {
+  if (!movie.tmdbId && !movie.videoUrl) {
+    return {
+      reason: 'TMDB ID + video link dono missing',
+      fix: 'Import Content page se TMDB ID se import karo',
+    };
+  }
+  if (movie.contentSource === 'IMDB3' || movie.playbackMode === 'HOSTED') {
+    return {
+      reason: 'IMDB3 / direct MP4 link dead ya upstream par nahi',
+      fix: 'IMDB3 tab se dubara import karo ya daily auto-sync ON karo',
+    };
+  }
+  if (movie.contentSource === 'MOVIESAPI' || movie.playbackMode === 'EMBED') {
+    return {
+      reason: 'MoviesAPI embed upstream par ye title available nahi',
+      fix: 'Content Library → Delete broken, phir Automation sync',
+    };
+  }
+  return {
+    reason: 'Playback probe fail — embed resolve nahi hua',
+    fix: 'Recheck karo; phir bhi fail → delete karo',
+  };
+}
+
+function toServerPlaybackFilter(filter: FilterType): string | undefined {
+  if (filter === 'working' || filter === 'playable') return 'WORKING';
+  if (filter === 'broken' || filter === 'no-stream') return 'not-working';
+  if (filter === 'pending') return 'PENDING';
+  return undefined;
+}
+
 export function MoviesPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -100,13 +181,24 @@ export function MoviesPage() {
 
   const queryClient = useQueryClient();
 
+  const serverPlayback = toServerPlaybackFilter(filter);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-movies', search, page],
+    queryKey: ['admin-movies', search, page, serverPlayback],
     queryFn: async () => {
-      const { data } = await api.get('/admin/movies', { params: { search, page, limit: 50 } });
+      const params: Record<string, string | number> = { search, page, limit: 50 };
+      if (serverPlayback) params.playbackStatus = serverPlayback;
+      const { data } = await api.get('/admin/movies', { params });
       return data;
     },
   });
+
+  const playbackStats = data?.stats ?? {
+    workingCount: 0,
+    brokenCount: 0,
+    pendingCount: 0,
+    notWorkingCount: 0,
+  };
 
   const { data: categoriesData } = useQuery({
     queryKey: ['admin-categories'],
@@ -147,12 +239,6 @@ export function MoviesPage() {
       if (filter === 'live') return movie.status === 'ACTIVE';
       if (filter === 'draft') return movie.status === 'DRAFT';
       if (filter === 'featured') return Boolean(movie.featured);
-      if (filter === 'urdubox') {
-        return (
-          movie.contentSource === 'URDBOX' ||
-          movie.playbackMode === 'URDBOX'
-        );
-      }
       if (filter === 'moviesapi') {
         return (
           movie.contentSource === 'MOVIESAPI' ||
@@ -162,16 +248,16 @@ export function MoviesPage() {
       if (filter === 'tmdb') {
         return (
           movie.source === 'TMDB' &&
-          movie.contentSource !== 'URDBOX' &&
           movie.contentSource !== 'MOVIESAPI' &&
-          movie.playbackMode !== 'URDBOX' &&
           movie.playbackMode !== 'EMBED'
         );
       }
       if (filter === 'manual') return movie.source === 'MANUAL';
-      const stream = getStreamStatus(movie);
-      if (filter === 'playable') return stream.playable;
-      if (filter === 'no-stream') return !stream.playable;
+      if (filter === 'working' || filter === 'playable') return getPlaybackInfo(movie).playable;
+      if (filter === 'broken' || filter === 'no-stream') {
+        return movie.playbackStatus === 'BROKEN' || !getPlaybackInfo(movie).playable;
+      }
+      if (filter === 'pending') return movie.playbackStatus === 'PENDING';
 
       if (selectedCategory !== 'all') {
         const matchesCat =
@@ -193,30 +279,43 @@ export function MoviesPage() {
     let live = 0;
     let draft = 0;
     let featured = 0;
-    let urdubox = 0;
     let moviesApi = 0;
     let tmdb = 0;
     let manual = 0;
-    let playable = 0;
-    let noStream = 0;
+    let working = 0;
+    let broken = 0;
+    let pending = 0;
     for (const m of rawMovies) {
       if (m.status === 'ACTIVE') live++;
       if (m.status === 'DRAFT') draft++;
       if (m.featured) featured++;
-      if (m.contentSource === 'URDBOX' || m.playbackMode === 'URDBOX') {
-        urdubox++;
-      } else if (m.contentSource === 'MOVIESAPI' || m.playbackMode === 'EMBED') {
+      if (m.contentSource === 'MOVIESAPI' || m.playbackMode === 'EMBED') {
         moviesApi++;
       } else if (m.source === 'MANUAL') {
         manual++;
       } else {
         tmdb++;
       }
-      const s = getStreamStatus(m);
-      if (s.playable) playable++;
-      else noStream++;
+      const s = getPlaybackInfo(m);
+      if (m.playbackStatus === 'WORKING' || s.playable) working++;
+      else if (m.playbackStatus === 'BROKEN') broken++;
+      else if (m.playbackStatus === 'PENDING') pending++;
+      else if (!s.playable) broken++;
+      else pending++;
     }
-    return { live, draft, featured, urdubox, moviesApi, tmdb, manual, playable, noStream };
+    return {
+      live,
+      draft,
+      featured,
+      moviesApi,
+      tmdb,
+      manual,
+      working,
+      broken,
+      pending,
+      playable: working,
+      noStream: broken,
+    };
   }, [rawMovies]);
 
   return (
@@ -230,6 +329,56 @@ export function MoviesPage() {
           </Link>
         }
       />
+
+      {/* Playback stats — full database counts */}
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => { setFilter('working'); setPage(1); }}
+          className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition hover:bg-emerald-500/15"
+        >
+          <p className="text-xs font-semibold uppercase text-emerald-400">Chal Rahi Hai</p>
+          <p className="mt-1 text-2xl font-bold text-white">{playbackStats.workingCount}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => { setFilter('broken'); setPage(1); }}
+          className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-left transition hover:bg-red-500/15"
+        >
+          <p className="text-xs font-semibold uppercase text-red-400">Chal Nahi Rahi</p>
+          <p className="mt-1 text-2xl font-bold text-white">{playbackStats.notWorkingCount}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => { setFilter('pending'); setPage(1); }}
+          className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-left transition hover:bg-amber-500/15"
+        >
+          <p className="text-xs font-semibold uppercase text-amber-400">Verify Pending</p>
+          <p className="mt-1 text-2xl font-bold text-white">{playbackStats.pendingCount}</p>
+        </button>
+      </div>
+
+      {(filter === 'broken' || filter === 'no-stream') && (
+        <Card className="mb-6 border-red-500/20 bg-red-950/20">
+          <div className="space-y-2 text-sm text-slate-300">
+            <p className="font-semibold text-red-300">Broken movies ka kya karein?</p>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-slate-400">
+              <li><strong className="text-slate-300">TMDB ID missing</strong> → Import Content se TMDB ID se dubara import karo</li>
+              <li><strong className="text-slate-300">MoviesAPI embed fail</strong> → Automation → Sync Everything, ya Content Library → Delete all broken</li>
+              <li><strong className="text-slate-300">IMDB3 link dead</strong> → Sync Settings → Daily auto ON, ya IMDB3 tab se manual import</li>
+              <li><strong className="text-slate-300">Manual metadata only</strong> → Sirf poster/title hai, stream nahi — re-import zaroori</li>
+            </ul>
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button size="sm" variant="outline" onClick={() => navigate('/content/library')}>
+                Content Library → Recheck / Delete
+              </Button>
+              <Button size="sm" variant="success" onClick={() => navigate('/automation')}>
+                Automation Sync
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Filter and Search Bar */}
       <Card className="mb-6" padding="md">
@@ -316,19 +465,6 @@ export function MoviesPage() {
 
             <span className="h-4 w-px bg-slate-800 mx-1 hidden sm:inline-block"></span>
 
-            {/* UrduBox */}
-            <button
-              onClick={() => setFilter('urdubox')}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
-                filter === 'urdubox'
-                  ? 'bg-violet-500/25 text-violet-300 ring-1 ring-violet-500/50 shadow-sm'
-                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-              }`}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-400"></span>
-              UrduBox ({counts.urdubox})
-            </button>
-
             {/* MoviesAPI */}
             <button
               onClick={() => setFilter('moviesapi')}
@@ -368,30 +504,40 @@ export function MoviesPage() {
 
             <span className="h-4 w-px bg-slate-800 mx-1 hidden sm:inline-block"></span>
 
-            {/* Stream Ready */}
             <button
-              onClick={() => setFilter('playable')}
+              onClick={() => { setFilter('working'); setPage(1); }}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
-                filter === 'playable'
+                filter === 'working' || filter === 'playable'
                   ? 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-              Stream Ready ({counts.playable})
+              Chal Rahi ({playbackStats.workingCount})
             </button>
 
-            {/* Chal Nahi Rahi */}
             <button
-              onClick={() => setFilter('no-stream')}
+              onClick={() => { setFilter('broken'); setPage(1); }}
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
-                filter === 'no-stream'
+                filter === 'broken' || filter === 'no-stream'
                   ? 'bg-red-500/25 text-red-300 ring-1 ring-red-500/50 shadow-sm'
                   : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-red-400"></span>
-              Chal Nahi Rahi ({counts.noStream})
+              Chal Nahi Rahi ({playbackStats.notWorkingCount})
+            </button>
+
+            <button
+              onClick={() => { setFilter('pending'); setPage(1); }}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === 'pending'
+                  ? 'bg-amber-500/25 text-amber-300 ring-1 ring-amber-500/50 shadow-sm'
+                  : 'bg-slate-800/80 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+              Pending ({playbackStats.pendingCount})
             </button>
 
             {/* Category Filter Selector */}
@@ -460,7 +606,7 @@ export function MoviesPage() {
                   const fullPosterUrl = getTmdbImageUrl(movie.posterPath, 'original');
                   const backdropUrl = getTmdbImageUrl(movie.backdropPath, 'w780');
                   const uploadDateFormatted = formatUploadDate(movie.createdAt || movie.releaseDate);
-                  const stream = getStreamStatus(movie);
+                  const stream = getPlaybackInfo(movie);
                   const effectiveSource = getEffectiveSource(movie);
                   const isLive = movie.status === 'ACTIVE';
 
@@ -595,20 +741,19 @@ export function MoviesPage() {
                       </td>
 
                       {/* Stream / Playback Status ("Chal Rahi Hai Ya Nahi") */}
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        <div className="flex flex-col gap-0.5" title={stream.detail}>
-                          <div className="flex items-center gap-1.5">
-                            <Badge variant={stream.variant}>
-                              {stream.playable ? '● ' + stream.label : '✕ ' + stream.label}
-                            </Badge>
-                          </div>
-                          <span
-                            className={`text-[11px] ${
-                              stream.playable ? 'text-slate-400' : 'text-red-400 font-medium'
-                            }`}
-                          >
-                            {stream.playable ? 'Playable on website' : 'Chal nahi sakti'}
+                      <td className="px-5 py-3.5 max-w-[220px]">
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={stream.variant}>
+                            {stream.playable ? '● ' : '✕ '}{stream.label}
+                          </Badge>
+                          <span className={`text-[11px] leading-snug ${stream.playable ? 'text-slate-400' : 'text-red-300'}`}>
+                            {stream.reason}
                           </span>
+                          {stream.fix && (
+                            <span className="text-[10px] leading-snug text-amber-400/90">
+                              Fix: {stream.fix}
+                            </span>
+                          )}
                         </div>
                       </td>
 

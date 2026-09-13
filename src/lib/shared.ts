@@ -52,6 +52,9 @@ export interface Movie {
   cast?: MovieCast[];
   contentSource?: string | null;
   playbackMode?: string | null;
+  playbackStatus?: 'PENDING' | 'WORKING' | 'BROKEN' | null;
+  playbackCheckedAt?: string | null;
+  syncPreset?: string | null;
   categoryMovies?: { category: Category; order?: number }[];
   categories?: Category[];
   createdAt?: string;
@@ -165,6 +168,11 @@ export interface Category {
 export interface DashboardStats {
   totalUsers: number;
   totalMovies: number;
+  totalSeries?: number;
+  totalAnime?: number;
+  workingCount?: number;
+  brokenCount?: number;
+  pendingCount?: number;
   activeUsers: number;
   totalWatchHistory: number;
 }

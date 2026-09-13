@@ -19,10 +19,14 @@ import { getTmdbImageUrl, type Series, type Category } from '../lib/shared';
 
 type FilterType = 'ALL' | 'SERIES' | 'ANIME';
 
-export function SeriesPage() {
+export function SeriesPage({ mode = 'all' }: { mode?: 'all' | 'series' | 'anime' }) {
+  const defaultType: FilterType =
+    mode === 'anime' ? 'ANIME' : mode === 'series' ? 'SERIES' : 'ALL';
+  const pageTitle = mode === 'anime' ? 'Anime' : mode === 'series' ? 'Web Series' : 'Web Series & Anime';
+
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [typeFilter, setTypeFilter] = useState<FilterType>('ALL');
+  const [typeFilter, setTypeFilter] = useState<FilterType>(defaultType);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -150,8 +154,14 @@ export function SeriesPage() {
     <div className="space-y-6">
       {/* Top Header */}
       <PageHeader
-        title="Web Series & Anime"
-        description="Comprehensive catalog of TV shows, Pakistani/Urdu dramas, and Anime series with season and episode streaming management."
+        title={pageTitle}
+        description={
+          mode === 'anime'
+            ? 'Anime catalog — seasons, episodes, AllManga playback.'
+            : mode === 'series'
+              ? 'Web series & TV shows for website.'
+              : 'TV shows, dramas, and anime with season and episode management.'
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -167,10 +177,10 @@ export function SeriesPage() {
               <span>⚡</span>
               <span>{bulkStatusMutation.isPending ? 'Activating All...' : `Activate All (${total})`}</span>
             </Button>
-            <Link to="/sync">
+            <Link to="/automation">
               <Button variant="secondary" className="flex items-center gap-2">
                 <IconSync className="h-4 w-4" />
-                Sync More Series
+                {mode === 'anime' ? 'Sync Anime' : 'Sync Web Series'}
               </Button>
             </Link>
           </div>
@@ -210,7 +220,7 @@ export function SeriesPage() {
         <Card className="p-4 bg-slate-900/60 border-slate-800">
           <p className="text-xs font-medium uppercase tracking-wider text-sky-400">Episode Playback</p>
           <p className="mt-1 text-2xl font-bold text-sky-400">Multi-Server</p>
-          <p className="mt-1 text-[11px] text-slate-400">UrduBox • MoviesAPI • MP4</p>
+          <p className="mt-1 text-[11px] text-slate-400">MoviesAPI • AllManga • MP4</p>
         </Card>
       </div>
 
@@ -242,48 +252,49 @@ export function SeriesPage() {
 
           {/* Quick Filters */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Type selector */}
-            <div className="flex rounded-lg bg-slate-800 p-1 border border-slate-700">
-              <button
-                onClick={() => {
-                  setTypeFilter('ALL');
-                  setPage(1);
-                }}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                  typeFilter === 'ALL'
-                    ? 'bg-red-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => {
-                  setTypeFilter('SERIES');
-                  setPage(1);
-                }}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                  typeFilter === 'SERIES'
-                    ? 'bg-red-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                📺 Web Series
-              </button>
-              <button
-                onClick={() => {
-                  setTypeFilter('ANIME');
-                  setPage(1);
-                }}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                  typeFilter === 'ANIME'
-                    ? 'bg-red-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                ⛩️ Anime
-              </button>
-            </div>
+            {mode === 'all' && (
+              <div className="flex rounded-lg bg-slate-800 p-1 border border-slate-700">
+                <button
+                  onClick={() => {
+                    setTypeFilter('ALL');
+                    setPage(1);
+                  }}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    typeFilter === 'ALL'
+                      ? 'bg-red-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => {
+                    setTypeFilter('SERIES');
+                    setPage(1);
+                  }}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    typeFilter === 'SERIES'
+                      ? 'bg-red-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📺 Web Series
+                </button>
+                <button
+                  onClick={() => {
+                    setTypeFilter('ANIME');
+                    setPage(1);
+                  }}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    typeFilter === 'ANIME'
+                      ? 'bg-red-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ⛩️ Anime
+                </button>
+              </div>
+            )}
 
             {/* Source dropdown */}
             <select
@@ -295,7 +306,6 @@ export function SeriesPage() {
               className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 focus:border-red-500 focus:outline-none"
             >
               <option value="all">All Sources</option>
-              <option value="urdubox">UrduBox</option>
               <option value="moviesapi">MoviesAPI</option>
               <option value="imdb3">IMDB3 / MovieBox</option>
               <option value="tmdb">TMDB</option>
@@ -412,7 +422,7 @@ export function SeriesPage() {
       ) : seriesList.length === 0 ? (
         <EmptyState
           title="No series found"
-          description="Try changing your search terms or filters, or run a content sync from UrduBox / MoviesAPI."
+          description="Try changing your search terms or filters, or run automation sync from the Automation page."
           action={
             <Link to="/sync">
               <Button variant="primary">Sync Content Now</Button>

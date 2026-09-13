@@ -23,16 +23,18 @@ export function DashboardPage() {
   if (isLoading) return <LoadingState label="Loading dashboard..." />;
 
   const stats = [
-    { label: 'Total Users', value: data?.totalUsers ?? 0, icon: <IconUsers className="h-5 w-5" />, accent: 'sky' as const },
     { label: 'Total Movies', value: data?.totalMovies ?? 0, icon: <IconFilm className="h-5 w-5" />, accent: 'red' as const },
-    { label: 'Active Users', value: data?.activeUsers ?? 0, icon: <IconUsers className="h-5 w-5" />, accent: 'emerald' as const },
-    { label: 'Watch History', value: data?.totalWatchHistory ?? 0, icon: <IconFilm className="h-5 w-5" />, accent: 'amber' as const },
+    { label: 'Series', value: data?.totalSeries ?? 0, icon: <IconFilm className="h-5 w-5" />, accent: 'sky' as const },
+    { label: 'Anime', value: data?.totalAnime ?? 0, icon: <IconFilm className="h-5 w-5" />, accent: 'amber' as const },
+    { label: 'Working', value: data?.workingCount ?? 0, icon: <IconSync className="h-5 w-5" />, accent: 'emerald' as const },
+    { label: 'Broken', value: data?.brokenCount ?? 0, icon: <IconSync className="h-5 w-5" />, accent: 'red' as const },
+    { label: 'Users', value: data?.totalUsers ?? 0, icon: <IconUsers className="h-5 w-5" />, accent: 'sky' as const },
   ];
 
   const quickActions = [
+    { to: '/automation', label: 'Sync Everything', desc: 'One-click TMDB platform sync', icon: <IconSync className="h-5 w-5" />, color: 'text-emerald-400 bg-emerald-500/10' },
+    { to: '/content/library', label: 'Content Library', desc: 'Filter & delete broken content', icon: <IconImport className="h-5 w-5" />, color: 'text-sky-400 bg-sky-500/10' },
     { to: '/movies/new', label: 'Add Movie', desc: 'Import from TMDB or add manually', icon: <IconFilm className="h-5 w-5" />, color: 'text-red-400 bg-red-500/10' },
-    { to: '/content/import', label: 'Import Content', desc: 'Import by TMDB ID', icon: <IconImport className="h-5 w-5" />, color: 'text-sky-400 bg-sky-500/10' },
-    { to: '/sync', label: 'Content Sync', desc: 'Bulk sync from sources', icon: <IconSync className="h-5 w-5" />, color: 'text-emerald-400 bg-emerald-500/10' },
     { to: '/movies', label: 'Manage Movies', desc: 'Edit, search & publish', icon: <IconFilm className="h-5 w-5" />, color: 'text-amber-400 bg-amber-500/10' },
   ];
 

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
-import { BrowserUrduboxSync } from '../components/BrowserUrduboxSync';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -13,17 +12,17 @@ import { Input, Label, Select } from '../components/ui/Input';
 import { LoadingState } from '../components/ui/EmptyState';
 import { IconStop } from '../components/ui/icons';
 
-type SyncSource = 'ALL' | 'URDBOX' | 'MOVIESAPI' | 'IMDB3';
-type SyncTab = 'settings' | 'run' | 'imdb3' | 'browser' | 'jobs';
+type SyncSource = 'ALL' | 'MOVIESAPI' | 'IMDB3';
+type SyncTab = 'settings' | 'run' | 'imdb3' | 'jobs';
 
 interface SyncSettings {
-  urduboxEnabled: boolean;
   moviesApiEnabled: boolean;
   imdb3Enabled: boolean;
   automationEnabled: boolean;
   syncIntervalHours: number;
   lastScheduledSyncAt: string | null;
   lastImdb3Id: number;
+  imdb3DailyCount: number;
   scheduleStart: string | null;
   scheduleEnd: string | null;
   cronExpression: string | null;
@@ -41,7 +40,6 @@ interface SyncStatus {
     syncIntervalHours: number;
     lastScheduledSyncAt: string | null;
     nextSyncRemainingMinutes: number | null;
-    urduboxEnabled: boolean;
     moviesApiEnabled: boolean;
     imdb3Enabled: boolean;
   };
@@ -127,13 +125,13 @@ function jobStatusVariant(status: string) {
 }
 
 const DEFAULT_SYNC_SETTINGS: SyncSettings = {
-  urduboxEnabled: false,
   moviesApiEnabled: false,
   imdb3Enabled: true,
   automationEnabled: false,
   syncIntervalHours: 24,
   lastScheduledSyncAt: null,
   lastImdb3Id: 123290,
+  imdb3DailyCount: 20,
   scheduleStart: null,
   scheduleEnd: null,
   cronExpression: null,
@@ -150,7 +148,7 @@ export function SyncPage() {
   const [activeTab, setActiveTab] = useState<SyncTab>('settings');
   const [imdb3SingleId, setImdb3SingleId] = useState('123295');
   const [imdb3BatchStart, setImdb3BatchStart] = useState('123290');
-  const [imdb3BatchCount, setImdb3BatchCount] = useState('5');
+  const [imdb3BatchCount, setImdb3BatchCount] = useState('20');
   const [imdb3Result, setImdb3Result] = useState<any>(null);
 
   const importImdb3SingleMutation = useMutation({
@@ -287,15 +285,14 @@ export function SyncPage() {
     { id: 'settings', label: 'Settings & Automation' },
     { id: 'run', label: 'Run Sync', badge: isSyncRunning ? '●' : undefined },
     { id: 'imdb3', label: 'IMDB3 / MovieBox' },
-    { id: 'browser', label: 'Browser Sync' },
     { id: 'jobs', label: 'Job History', badge: jobCount || undefined },
   ];
 
   return (
     <div>
       <PageHeader
-        title="Content Sync"
-        description="Configure sources, run bulk imports, and monitor sync jobs."
+        title="Sync Settings"
+        description="Configure providers, run manual syncs, and monitor job history."
       />
 
       {isSyncRunning && (
@@ -327,12 +324,6 @@ export function SyncPage() {
               <CardHeader title="Content Providers" description="Enable or disable upstream content sources" />
               <div className="space-y-4">
                 <Switch
-                  label="Urdubox"
-                  description="Import Pakistani, Urdu dubbed movies & series (urdubox.pk)"
-                  checked={form.urduboxEnabled}
-                  onChange={(v) => setForm({ ...form, urduboxEnabled: v })}
-                />
-                <Switch
                   label="MoviesAPI"
                   description="Import Hollywood & global titles with embed player (moviesapi.to)"
                   checked={form.moviesApiEnabled}
@@ -354,8 +345,8 @@ export function SyncPage() {
               />
               <div className="space-y-4">
                 <Switch
-                  label="Automatic Background Sync"
-                  description="Automatically run scheduled sync across all enabled providers"
+                  label="Daily New Releases (Auto)"
+                  description={`Har roz automatically ${form.imdb3DailyCount || 20} nayi IMDB3 IDs scan + import — manual batch ki zaroorat nahi`}
                   checked={form.automationEnabled}
                   onChange={(v) => setForm({ ...form, automationEnabled: v })}
                 />
@@ -472,15 +463,29 @@ export function SyncPage() {
                   </div>
                 </div>
 
-                <div>
-                  <Label hint="Tracks latest scanned sequential movie ID from IMDB3 / MovieBox">
-                    IMDB3 Checkpoint Start ID
-                  </Label>
-                  <Input
-                    type="number"
-                    value={form.lastImdb3Id || 123290}
-                    onChange={(e) => setForm({ ...form, lastImdb3Id: Number(e.target.value) })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label hint="Tracks latest scanned sequential movie ID from IMDB3 / MovieBox">
+                      IMDB3 Checkpoint Start ID
+                    </Label>
+                    <Input
+                      type="number"
+                      value={form.lastImdb3Id || 123290}
+                      onChange={(e) => setForm({ ...form, lastImdb3Id: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div>
+                    <Label hint="Kitni nayi movies roz auto-import hon (max 25)">
+                      Daily New Releases Count
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={25}
+                      value={form.imdb3DailyCount || 20}
+                      onChange={(e) => setForm({ ...form, imdb3DailyCount: Number(e.target.value) })}
+                    />
+                  </div>
                 </div>
               </div>
             </Card>
@@ -528,8 +533,7 @@ export function SyncPage() {
                 onChange={(e) => setRunSource(e.target.value as SyncSource)}
                 disabled={isSyncRunning}
               >
-                <option value="ALL">All enabled sources (UrduBox, MoviesAPI, IMDB3)</option>
-                <option value="URDBOX">Urdubox only (Pakistani, Urdu Dubbed)</option>
+                <option value="ALL">All enabled sources (MoviesAPI, IMDB3)</option>
                 <option value="MOVIESAPI">MoviesAPI only (Hollywood & International)</option>
                 <option value="IMDB3">IMDB3 / MovieBox only (Direct MP4 Bollywood/Hollywood)</option>
               </Select>
@@ -580,6 +584,38 @@ export function SyncPage() {
 
       {activeTab === 'imdb3' && (
         <div className="space-y-6">
+          <Card className="border-emerald-500/30 bg-emerald-950/20">
+            <CardHeader
+              title="Roz Automatic 20 New Releases"
+              description="Settings tab mein 'Daily New Releases (Auto)' ON karein — system har roz nayi IDs scan karega aur auto-import karega"
+            />
+            <div className="rounded-xl border border-emerald-500/20 bg-slate-900/60 p-4 text-sm text-slate-300 space-y-2">
+              <p>
+                <span className="font-semibold text-emerald-400">Status:</span>{' '}
+                {form.automationEnabled ? (
+                  <span className="text-emerald-300">Active — har {form.syncIntervalHours || 24}h mein {form.imdb3DailyCount || 20} nayi IDs check hoti hain</span>
+                ) : (
+                  <span className="text-amber-300">Disabled — Settings tab se enable karein</span>
+                )}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-400">Next ID:</span>{' '}
+                <span className="font-mono text-white">{form.lastImdb3Id || 123290}</span>
+                <span className="text-slate-500"> → auto-scan {form.imdb3DailyCount || 20} IDs ahead</span>
+              </p>
+              {form.automationEnabled && syncStatus?.automation?.nextSyncRemainingMinutes !== undefined && (
+                <p>
+                  <span className="font-semibold text-slate-400">Next run:</span>{' '}
+                  <span className="text-amber-300">
+                    {syncStatus.automation.nextSyncRemainingMinutes === 0
+                      ? 'Due now'
+                      : `~${Math.floor((syncStatus.automation.nextSyncRemainingMinutes || 0) / 60)}h ${(syncStatus.automation.nextSyncRemainingMinutes || 0) % 60}m`}
+                  </span>
+                </p>
+              )}
+            </div>
+          </Card>
+
           {/* Easy Guide & Explanation Banner */}
           <Card className="border-red-500/30 bg-gradient-to-r from-red-950/40 via-slate-900 to-slate-900">
             <CardHeader
@@ -759,18 +795,6 @@ export function SyncPage() {
             </Card>
           )}
         </div>
-      )}
-
-      {activeTab === 'browser' && (
-        <BrowserUrduboxSync
-          maxPages={form.maxPagesPerRun}
-          resultsPerPage={form.resultsPerPage}
-          onComplete={() => {
-            queryClient.invalidateQueries({ queryKey: ['sync-jobs'] });
-            queryClient.invalidateQueries({ queryKey: ['sync-status'] });
-            setActiveTab('jobs');
-          }}
-        />
       )}
 
       {activeTab === 'jobs' && (

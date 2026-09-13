@@ -18,7 +18,6 @@ interface CheckResult {
   reason: string;
   message: string;
   exists: boolean;
-  urduboxAvailable: boolean;
   availableSources: string[];
   existingId?: string;
   existingTitle?: string;
@@ -45,25 +44,6 @@ export function ContentImportPage() {
     onError: () => setMessage({ type: 'error', text: 'Failed to check content.' }),
   });
 
-  const importUrduboxMutation = useMutation({
-    mutationFn: () => api.post('/admin/content/import/urdubox', { tmdbId: Number(tmdbId), type: contentType }),
-    onSuccess: (res) => {
-      const data = res.data;
-      if (data.imported && data.movie?.id) {
-        setMessage({ type: 'success', text: data.message || 'Imported successfully.' });
-        navigate(`/movies/${data.movie.id}/edit`);
-        return;
-      }
-      if (data.imported && data.series) {
-        setMessage({ type: 'success', text: data.message || 'Series imported successfully.' });
-        return;
-      }
-      setMessage({ type: 'error', text: data.message || 'Import skipped.' });
-      setCheckResult(data);
-    },
-    onError: () => setMessage({ type: 'error', text: 'Urdubox import failed.' }),
-  });
-
   const importMoviesApiMutation = useMutation({
     mutationFn: () => api.post('/admin/content/import/moviesapi', { tmdbId: Number(tmdbId), type: contentType }),
     onSuccess: (res) => {
@@ -84,7 +64,7 @@ export function ContentImportPage() {
   });
 
   const canImport = checkResult?.action === 'IMPORT';
-  const isPending = checkMutation.isPending || importUrduboxMutation.isPending || importMoviesApiMutation.isPending;
+  const isPending = checkMutation.isPending || importMoviesApiMutation.isPending;
   const step = checkResult ? 2 : 1;
 
   return (
@@ -166,15 +146,7 @@ export function ContentImportPage() {
                     </Badge>
                   </div>
                 </div>
-                <div className="rounded-xl bg-slate-900/50 p-3 text-center">
-                  <p className="text-xs text-slate-500">Urdubox</p>
-                  <div className="mt-1">
-                    <Badge variant={checkResult.urduboxAvailable ? 'success' : 'default'}>
-                      {checkResult.urduboxAvailable ? 'Available' : 'No'}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="rounded-xl bg-slate-900/50 p-3 text-center sm:col-span-2">
+                <div className="rounded-xl bg-slate-900/50 p-3 text-center sm:col-span-3">
                   <p className="text-xs text-slate-500">Sources</p>
                   <p className="mt-1 text-sm font-medium text-slate-200">
                     {checkResult.availableSources.join(' · ')}
@@ -204,16 +176,8 @@ export function ContentImportPage() {
               <div className="flex flex-wrap gap-3">
                 <Button
                   variant="success"
-                  onClick={() => importUrduboxMutation.mutate()}
-                  disabled={!canImport || !checkResult.urduboxAvailable || isPending}
-                >
-                  {importUrduboxMutation.isPending ? 'Importing...' : 'Import from Urdubox'}
-                </Button>
-                <Button
-                  variant="secondary"
                   onClick={() => importMoviesApiMutation.mutate()}
                   disabled={!canImport || isPending}
-                  className="!bg-sky-600 hover:!bg-sky-500"
                 >
                   {importMoviesApiMutation.isPending ? 'Importing...' : 'Import from MoviesAPI'}
                 </Button>
